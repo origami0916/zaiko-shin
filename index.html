@@ -146,7 +146,7 @@
                     </div>
                 </div>
             </div>
-            </section>
+        </section>
 
         <section id="inventory-list-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">3. 在庫一覧</h2>
@@ -389,7 +389,77 @@
         function calculateDaysBetween(date1, date2) { if (!date1 || !date2 || isNaN(date1.getTime()) || isNaN(date2.getTime())) return null; const utcDate1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate()); const utcDate2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate()); const diffTime = utcDate1 - utcDate2; return Math.floor(diffTime / (1000 * 60 * 60 * 24)); }
         function parseTSV(tsvString) { console.log("Parsing TSV data..."); if (!tsvString) return { headers: [], data: [] }; const lines = tsvString.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n'); if (lines.length < 1) return { headers: [], data: [] }; const tempHeaders = lines[0].split('\t').map(h => h.trim()); console.log("Detected Headers:", tempHeaders); const data = lines.slice(1).map((line, lineIndex) => { const values = line.split('\t').map(v => v.trim()); let row = {}; tempHeaders.forEach((header, index) => { if (header) row[header] = values[index] !== undefined ? values[index] : ''; }); row._originalLine = lineIndex + 2; return row; }).filter(row => Object.keys(row).length > 1 || (Object.keys(row).length === 1 && row._originalLine)); console.log(`Parsed ${data.length} data rows.`); return { headers: tempHeaders.filter(h => h), data: data }; }
         function validateHeaders(parsedHeaders) { const requiredColumns = ['有効期限', '最終出庫', '在庫金額(税別)', '在庫数量', '薬品コード']; const missingColumns = requiredColumns.filter(col => !parsedHeaders.includes(col)); if (missingColumns.length > 0) console.error("Missing required columns:", missingColumns); return missingColumns; }
-        function processInventoryData(inputRawData, currentHeaders) { console.log("Processing inventory data..."); const processed = inputRawData.map((item, index) => { const newItem = { ...item, originalIndex: index }; try { const priceKey = '在庫金額(税別)'; const quantityKey = '在庫数量'; newItem[priceKey] = item[priceKey] ? parseFloat(String(item[priceKey]).replace(/,/g, '')) : 0; if (isNaN(newItem[priceKey])) newItem[priceKey] = 0; newItem[quantityKey] = item[quantityKey] ? parseFloat(String(item[quantityKey]).replace(/,/g, '')) : 0; if (isNaN(newItem[quantityKey])) newItem[quantityKey] = 0; const expiryDateKey = '有効期限'; const lastOutDateKey = '最終出庫'; const lastInDateKey = '最終入庫'; const stagnantDateKey = '(停滞)'; newItem.expiryDate = parseDate(item[expiryDateKey]); newItem.lastOutDate = parseDate(item[lastOutDateKey]); newItem.lastInDate = parseDate(item[lastInDateKey]); newItem.stagnantDate = item[stagnantDateKey] ? parseDate(item[stagnantDateKey]) : null; newItem.formattedExpiryDate = newItem.expiryDate ? newItem.expiryDate.toLocaleDateString('ja-JP') : '不明'; newItem.formattedLastOutDate = newItem.lastOutDate ? newItem.lastOutDate.toLocaleDateString('ja-JP') : '記録なし'; newItem.formattedLastInDate = newItem.lastInDate ? newItem.lastInDate.toLocaleDateString('ja-JP') : '不明'; newItem.remainingDays = calculateDaysBetween(newItem.expiryDate, analysisDate); let stagnantDaysBaseDate = newItem.stagnantDate || newItem.lastOutDate; if (stagnantDaysBaseDate && !isNaN(stagnantDaysBaseDate.getTime())) { newItem.stagnantDays = calculateDaysBetween(analysisDate, stagnantDaysBaseDate); if (newItem.stagnantDays < 0) newItem.stagnantDays = 0; } else { newItem.stagnantDays = 9999; } let expiryScore = 0, stagnantScore = 0; const MAX_SCORE = 10; if (newItem.remainingDays !== null && newItem.remainingDays < 0) { newItem.riskRank = MAX_SCORE; } else { if (newItem.remainingDays !== null && newItem.remainingDays >= 0) { const expiryBaseDays = 180; expiryScore = Math.max(0, MAX_SCORE * (1 - newItem.remainingDays / expiryBaseDays)); } else { expiryScore = MAX_SCORE / 2; } if (newItem.stagnantDays === 9999) { stagnantScore = MAX_SCORE; } else if (newItem.stagnantDays !== null && newItem.stagnantDays >= 0) { const stagnantBaseDays = 365; stagnantScore = Math.min(MAX_SCORE, MAX_SCORE * (newItem.stagnantDays / stagnantBaseDays)); } else { stagnantScore = 0; } let totalScore = (expiryScore * (1 - riskBalance)) + (stagnantScore * riskBalance); newItem.riskRank = Math.max(1, Math.min(MAX_SCORE, Math.ceil(totalScore))); } newItem.isExpired = newItem.remainingDays !== null && newItem.remainingDays < 0; newItem.isExpirySoon = newItem.remainingDays !== null && newItem.remainingDays >= 0 && newItem.remainingDays <= 90; newItem.isStagnant = newItem.stagnantDays >= stagnantThreshold && newItem.stagnantDays !== 9999; newItem.isUnused = newItem.stagnantDays === 9999; newItem.isNormal = !newItem.isExpired && !newItem.isExpirySoon && !newItem.isStagnant && !newItem.isUnused; newItem.isHighRisk = newItem.riskRank >= 8; } catch (error) { console.error(`Error processing row ${item._originalLine || index + 1}:`, error, item); newItem._processingError = true; } return newItem; }); excludeCodes = new Set(excludeListEl.value.split('\n').map(code => code.trim()).filter(code => code)); const filtered = processed.filter(item => !item._processingError && !excludeCodes.has(item['薬品コード'])); console.log(`Finished processing. ${filtered.length} items remaining after filtering.`); return filtered; }
+
+        // データ処理のメイン関数 (滞留日数計算修正)
+        function processInventoryData(inputRawData, currentHeaders) {
+            console.log("Processing inventory data (stagnant calculation updated)...");
+            const processed = inputRawData.map((item, index) => {
+                const newItem = { ...item, originalIndex: index };
+                try {
+                    // --- 値の整形・変換 ---
+                    const priceKey = '在庫金額(税別)';
+                    const quantityKey = '在庫数量';
+                    newItem[priceKey] = item[priceKey] ? parseFloat(String(item[priceKey]).replace(/,/g, '')) : 0;
+                    if (isNaN(newItem[priceKey])) newItem[priceKey] = 0;
+                    newItem[quantityKey] = item[quantityKey] ? parseFloat(String(item[quantityKey]).replace(/,/g, '')) : 0;
+                    if (isNaN(newItem[quantityKey])) newItem[quantityKey] = 0;
+
+                    // --- 日付のパース ---
+                    const expiryDateKey = '有効期限';
+                    const lastOutDateKey = '最終出庫';
+                    const lastInDateKey = '最終入庫';
+                    // const stagnantDateKey = '(停滞)'; // (停滞)列は参照しない
+
+                    newItem.expiryDate = parseDate(item[expiryDateKey]);
+                    newItem.lastOutDate = parseDate(item[lastOutDateKey]);
+                    newItem.lastInDate = parseDate(item[lastInDateKey]);
+                    // newItem.stagnantDate = item[stagnantDateKey] ? parseDate(item[stagnantDateKey]) : null; // (停滞)列のパースを削除
+
+                    newItem.formattedExpiryDate = newItem.expiryDate ? newItem.expiryDate.toLocaleDateString('ja-JP') : '不明';
+                    newItem.formattedLastOutDate = newItem.lastOutDate ? newItem.lastOutDate.toLocaleDateString('ja-JP') : '記録なし';
+                    newItem.formattedLastInDate = newItem.lastInDate ? newItem.lastInDate.toLocaleDateString('ja-JP') : '不明';
+
+                    // --- 残り日数計算 ---
+                    newItem.remainingDays = calculateDaysBetween(newItem.expiryDate, analysisDate);
+
+                    // --- 滞留日数計算 (修正) ---
+                    // (停滞)列を無視し、最終出庫日のみを基準とする
+                    let stagnantDaysBaseDate = newItem.lastOutDate; // 常に最終出庫日を参照
+                    if (stagnantDaysBaseDate && !isNaN(stagnantDaysBaseDate.getTime())) {
+                        newItem.stagnantDays = calculateDaysBetween(analysisDate, stagnantDaysBaseDate);
+                        // マイナスになった場合は0にする
+                        if (newItem.stagnantDays < 0) newItem.stagnantDays = 0;
+                    } else {
+                        // 最終出庫記録がない場合は9999
+                        newItem.stagnantDays = 9999;
+                    }
+
+                    // --- 危険度ランク計算 (変更なし) ---
+                    let expiryScore = 0, stagnantScore = 0;
+                    const MAX_SCORE = 10;
+                    if (newItem.remainingDays !== null && newItem.remainingDays < 0) { newItem.riskRank = MAX_SCORE; } else { if (newItem.remainingDays !== null && newItem.remainingDays >= 0) { const expiryBaseDays = 180; expiryScore = Math.max(0, MAX_SCORE * (1 - newItem.remainingDays / expiryBaseDays)); } else { expiryScore = MAX_SCORE / 2; } if (newItem.stagnantDays === 9999) { stagnantScore = MAX_SCORE; } else if (newItem.stagnantDays !== null && newItem.stagnantDays >= 0) { const stagnantBaseDays = 365; stagnantScore = Math.min(MAX_SCORE, MAX_SCORE * (newItem.stagnantDays / stagnantBaseDays)); } else { stagnantScore = 0; } let totalScore = (expiryScore * (1 - riskBalance)) + (stagnantScore * riskBalance); newItem.riskRank = Math.max(1, Math.min(MAX_SCORE, Math.ceil(totalScore))); }
+
+                    // --- フラグ設定 (変更なし) ---
+                    newItem.isExpired = newItem.remainingDays !== null && newItem.remainingDays < 0;
+                    newItem.isExpirySoon = newItem.remainingDays !== null && newItem.remainingDays >= 0 && newItem.remainingDays <= 90;
+                    newItem.isStagnant = newItem.stagnantDays >= stagnantThreshold && newItem.stagnantDays !== 9999;
+                    newItem.isUnused = newItem.stagnantDays === 9999;
+                    newItem.isNormal = !newItem.isExpired && !newItem.isExpirySoon && !newItem.isStagnant && !newItem.isUnused;
+                    newItem.isHighRisk = newItem.riskRank >= 8;
+
+                } catch (error) {
+                     console.error(`Error processing row ${item._originalLine || index + 1}:`, error, item);
+                     newItem._processingError = true;
+                }
+                return newItem;
+            });
+
+            excludeCodes = new Set(excludeListEl.value.split('\n').map(code => code.trim()).filter(code => code));
+            const filtered = processed.filter(item => !item._processingError && !excludeCodes.has(item['薬品コード']));
+            console.log(`Finished processing. ${filtered.length} items remaining after filtering.`);
+            return filtered;
+        }
+
 
         // --- UI更新関数 ---
         function updateDashboardKPIs(data) { kpiArea.innerHTML = ''; if (!data || data.length === 0) return; const totalItems = data.length; const totalValue = data.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const highRiskItems = data.filter(item => item.riskRank >= 8); const highRiskCount = highRiskItems.length; const highRiskValue = highRiskItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const stagnantItems = data.filter(item => item.isStagnant); const stagnantCount = stagnantItems.length; const stagnantValue = stagnantItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const expirySoonItems = data.filter(item => item.isExpirySoon); const expirySoonCount = expirySoonItems.length; const expirySoonValue = expirySoonItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const unusedItems = data.filter(item => item.isUnused); const unusedCount = unusedItems.length; const unusedValue = unusedItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const kpis = [ { label: '総在庫品目数', value: totalItems.toLocaleString() }, { label: '総在庫金額(税別)', value: `¥${Math.round(totalValue).toLocaleString()}` }, { label: `要注意在庫 (${highRiskCount}品目)`, value: `¥${Math.round(highRiskValue).toLocaleString()}`, highlight: true }, { label: `滞留在庫 (${stagnantCount}品目)`, value: `¥${Math.round(stagnantValue).toLocaleString()}`, highlight: true }, { label: `期限切迫在庫 (${expirySoonCount}品目)`, value: `¥${Math.round(expirySoonValue).toLocaleString()}`, highlight: true }, { label: `未使用在庫 (${unusedCount}品目)`, value: `¥${Math.round(unusedValue).toLocaleString()}`, highlight: true }, ]; kpis.forEach(kpi => { const div = document.createElement('div'); div.className = `p-4 rounded-lg shadow ${kpi.highlight ? 'bg-red-100' : 'bg-blue-50'}`; div.innerHTML = `<dt class="text-sm font-medium text-gray-500 truncate">${kpi.label}</dt><dd class="mt-1 text-xl font-semibold ${kpi.highlight ? 'text-red-700' : 'text-blue-800'}">${kpi.value}</dd>`; kpiArea.appendChild(div); }); }
