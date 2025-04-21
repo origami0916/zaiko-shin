@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>薬品在庫分析ダッシュボード</title>
+    <title>薬品在庫分析ダッシュボード (グラフ付き)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* カスタムスタイル */
         body {
@@ -15,6 +16,13 @@
         .row-warning-expiry { background-color: #fffbeb; } /* 期限切迫 (例: 黄系) */
         .row-warning-stagnant { background-color: #e0f2fe; } /* 滞留 (例: 青系) */
         .row-unused { background-color: #f3f4f6; } /* 未使用 (例: グレー系) */
+
+        /* グラフコンテナの高さ調整 */
+        .chart-container {
+            position: relative;
+            height: 300px; /* Adjust height as needed */
+            width: 100%;
+        }
 
         /* 印刷用スタイル */
         @media print {
@@ -29,6 +37,11 @@
                 left: 0;
                 top: 0;
                 width: 100%;
+            }
+            /* グラフは印刷しない (複雑なため) */
+            #dashboard-section canvas, .chart-container {
+                 display: none !important;
+                 visibility: hidden !important;
             }
             button, input, select, textarea, #settings-section, #data-input-section, #inventory-list-controls, #analysis-report-controls, #print-button-container {
                 display: none !important; /* 操作要素は印刷しない */
@@ -46,7 +59,7 @@
             th {
                 background-color: #f2f2f2;
             }
-            /* 印刷時の条件付き書式（背景色は印刷されない場合があるので、別の方法も検討） */
+            /* 印刷時の条件付き書式 */
             .row-danger-high { border-left: 3px solid #ef4444 !important; background-color: transparent !important; }
             .row-warning-expiry { border-left: 3px solid #f59e0b !important; background-color: transparent !important; }
             .row-warning-stagnant { border-left: 3px solid #3b82f6 !important; background-color: transparent !important; }
@@ -59,7 +72,7 @@
 </head>
 <body class="bg-gray-100 p-4 md:p-8">
     <div class="container mx-auto bg-white p-6 rounded-lg shadow-lg">
-        <h1 class="text-2xl font-bold mb-6 text-center text-blue-800">薬品在庫分析ダッシュボード</h1>
+        <h1 class="text-2xl font-bold mb-6 text-center text-blue-800">薬品在庫分析ダッシュボード (グラフ付き)</h1>
 
         <section id="settings-section" class="mb-8 p-4 border rounded-md bg-gray-50">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">1. データ入力・設定</h2>
@@ -91,15 +104,6 @@
                         <label for="stagnant-threshold" class="block text-sm font-medium text-gray-700 mb-1">滞留在庫とみなす日数</label>
                         <input type="number" id="stagnant-threshold" value="180" min="0" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                     </div>
-                    <div>
-                        <label for="watchlist-count" class="block text-sm font-medium text-gray-700 mb-1">注目リスト表示件数</label>
-                        <select id="watchlist-count" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                            <option value="5">5件</option>
-                            <option value="10" selected>10件</option>
-                            <option value="20">20件</option>
-                            <option value="50">50件</option>
-                        </select>
-                    </div>
                 </div>
             </div>
             <div class="mt-6 text-center">
@@ -110,18 +114,39 @@
                     再計算
                 </button>
             </div>
-             <div id="message-area" class="mt-4 text-center text-red-600 font-medium h-6"></div> {/* メッセージ表示領域 */}
-        </section>
+             <div id="message-area" class="mt-4 text-center text-red-600 font-medium h-6"></div> </section>
 
         <section id="dashboard-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">2. ダッシュボード</h2>
             <div id="kpi-area" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-                {/* */}
+                </div>
+            <div id="chart-area" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <div class="p-4 border rounded-md bg-white shadow">
+                     <h3 class="text-md font-semibold mb-2 text-center text-gray-700">危険度ランク別 在庫金額</h3>
+                     <div class="chart-container">
+                         <canvas id="valueByRiskChart"></canvas>
+                     </div>
+                 </div>
+                 <div class="p-4 border rounded-md bg-white shadow">
+                    <h3 class="text-md font-semibold mb-2 text-center text-gray-700">危険度ランク別 品目数</h3>
+                    <div class="chart-container">
+                        <canvas id="countByRiskChart"></canvas>
+                    </div>
+                </div>
+                <div class="p-4 border rounded-md bg-white shadow">
+                    <h3 class="text-md font-semibold mb-2 text-center text-gray-700">在庫ステータス別 品目数</h3>
+                     <div class="chart-container">
+                         <canvas id="statusChart"></canvas>
+                     </div>
+                 </div>
+                 <div class="p-4 border rounded-md bg-white shadow">
+                    <h3 class="text-md font-semibold mb-2 text-center text-gray-700">有効期限分布 (品目数)</h3>
+                    <div class="chart-container">
+                        <canvas id="expiryDistributionChart"></canvas>
+                    </div>
+                </div>
             </div>
-            <div id="watchlist-area" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* */}
-            </div>
-        </section>
+            </section>
 
         <section id="inventory-list-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">3. 在庫一覧</h2>
@@ -135,15 +160,13 @@
                         <label for="filter-category" class="block text-sm font-medium text-gray-700 mb-1">薬品種別</label>
                         <select id="filter-category" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                             <option value="">すべて</option>
-                            {/* */}
-                        </select>
+                            </select>
                     </div>
                      <div>
                         <label for="filter-risk" class="block text-sm font-medium text-gray-700 mb-1">危険度ランク</label>
                         <select id="filter-risk" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                             <option value="">すべて</option>
-                            {/* */}
-                        </select>
+                            </select>
                     </div>
                  </div>
                  <div class="flex justify-end items-center space-x-2">
@@ -155,20 +178,17 @@
                          <option value="all">全件</option>
                      </select>
                      <div id="inventory-pagination" class="flex items-center space-x-1">
-                         {/* */}
-                     </div>
+                         </div>
                  </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 border">
                     <thead class="bg-gray-100">
                         <tr id="inventory-table-header">
-                            {/* */}
-                        </tr>
+                            </tr>
                     </thead>
                     <tbody id="inventory-table-body" class="bg-white divide-y divide-gray-200">
-                        {/* */}
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
              <div id="inventory-list-summary" class="mt-2 text-sm text-gray-600"></div>
@@ -183,8 +203,7 @@
                     <button data-tab="expirySoon" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">有効期限切迫</button>
                     <button data-tab="riskWorst" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">危険度ランクワースト</button>
                     <button data-tab="unused" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">未使用在庫</button>
-                    {/* */}
-                </div>
+                    </div>
                 <div>
                     <label for="report-count" class="text-sm font-medium text-gray-700 mr-2">表示件数:</label>
                     <select id="report-count" class="p-2 border border-gray-300 rounded-md">
@@ -205,12 +224,10 @@
                 <table class="min-w-full divide-y divide-gray-200 border">
                     <thead class="bg-gray-100">
                         <tr id="report-table-header">
-                            {/* */}
-                        </tr>
+                            </tr>
                     </thead>
                     <tbody id="report-table-body" class="bg-white divide-y divide-gray-200">
-                        {/* */}
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
         </section>
@@ -264,7 +281,6 @@
         let analysisDate = new Date(); // 分析基準日
         let riskBalance = 0.5; // 危険度バランス (0=期限重視, 1=滞留重視)
         let stagnantThreshold = 180; // 滞留日数閾値
-        let watchlistCount = 10; // 注目リスト表示件数
 
         // 在庫一覧用
         let inventoryCurrentPage = 1;
@@ -280,6 +296,13 @@
         let reportCount = 100;
         let reportExcludeTop3 = false;
 
+        // Chart instances
+        let valueByRiskChartInstance = null;
+        let countByRiskChartInstance = null;
+        let statusChartInstance = null;
+        let expiryDistributionChartInstance = null;
+
+
         // --- DOM要素 ---
         const inventoryDataEl = document.getElementById('inventory-data');
         const excludeListEl = document.getElementById('exclude-list');
@@ -287,14 +310,13 @@
         const riskBalanceEl = document.getElementById('risk-balance');
         const riskBalanceValueEl = document.getElementById('risk-balance-value');
         const stagnantThresholdEl = document.getElementById('stagnant-threshold');
-        const watchlistCountEl = document.getElementById('watchlist-count');
         const processButton = document.getElementById('process-button');
         const recalculateButton = document.getElementById('recalculate-button');
         const messageArea = document.getElementById('message-area');
 
         const dashboardSection = document.getElementById('dashboard-section');
         const kpiArea = document.getElementById('kpi-area');
-        const watchlistArea = document.getElementById('watchlist-area');
+        const chartArea = document.getElementById('chart-area'); // Added
 
         const inventoryListSection = document.getElementById('inventory-list-section');
         const inventoryTableHeader = document.getElementById('inventory-table-header'); // This is the <tr> element
@@ -318,1409 +340,98 @@
         const printReportButton = document.getElementById('print-report-button');
         const printSection = document.getElementById('print-section');
 
+        // Chart canvas elements
+        const valueByRiskChartCtx = document.getElementById('valueByRiskChart')?.getContext('2d');
+        const countByRiskChartCtx = document.getElementById('countByRiskChart')?.getContext('2d');
+        const statusChartCtx = document.getElementById('statusChart')?.getContext('2d');
+        const expiryDistributionChartCtx = document.getElementById('expiryDistributionChart')?.getContext('2d');
+
+
         // --- 初期設定 ---
         function initialize() {
             console.log("Initializing Dashboard...");
-            // 分析基準日のデフォルトを今日に設定
             analysisDate = new Date();
-            analysisDate.setHours(0, 0, 0, 0); // 時刻をリセット
-            try {
-                analysisDateEl.valueAsDate = analysisDate;
-            } catch (e) {
-                 console.error("Failed to set default analysis date:", e);
-                 analysisDateEl.value = analysisDate.toISOString().split('T')[0]; // Fallback for browsers not supporting valueAsDate well
-            }
-
-
-            // イベントリスナーを設定
+            analysisDate.setHours(0, 0, 0, 0);
+            try { analysisDateEl.valueAsDate = analysisDate; } catch (e) { console.error("Failed to set default analysis date:", e); analysisDateEl.value = analysisDate.toISOString().split('T')[0]; }
             processButton.addEventListener('click', handleProcessData);
             recalculateButton.addEventListener('click', handleRecalculate);
             analysisDateEl.addEventListener('change', updateSettings);
             riskBalanceEl.addEventListener('input', updateSettings);
             stagnantThresholdEl.addEventListener('change', updateSettings);
-            watchlistCountEl.addEventListener('change', updateSettings);
-
             searchInventoryEl.addEventListener('input', handleInventoryFilterChange);
             filterCategoryEl.addEventListener('change', handleInventoryFilterChange);
             filterRiskEl.addEventListener('change', handleInventoryFilterChange);
             inventoryPageSizeEl.addEventListener('change', handleInventoryPageSizeChange);
-
             reportTabs.forEach(tab => tab.addEventListener('click', handleReportTabChange));
             reportCountEl.addEventListener('change', handleReportOptionsChange);
             excludeTop3El.addEventListener('change', handleReportOptionsChange);
-
             printReportButton.addEventListener('click', handlePrintReport);
-
-            // デフォルト値を表示に反映
             updateRiskBalanceDisplay();
-             console.log("Dashboard Initialized.");
+            console.log("Dashboard Initialized.");
         }
 
         // --- 設定更新 ---
         function updateSettings() {
-            try {
-                const selectedDate = analysisDateEl.valueAsDate;
-                 if (selectedDate && !isNaN(selectedDate)) {
-                    analysisDate = selectedDate;
-                    analysisDate.setHours(0, 0, 0, 0);
-                 } else {
-                     // Fallback or error handling if date is invalid
-                     console.warn("Invalid date selected, using previous date or today.");
-                     analysisDate = new Date(); // Or keep the previous valid date
-                     analysisDate.setHours(0, 0, 0, 0);
-                     analysisDateEl.valueAsDate = analysisDate; // Reset input
-                 }
-            } catch (e) {
-                 console.error("Error reading analysis date:", e);
-                 // Attempt to read as string if valueAsDate fails
-                 try {
-                     analysisDate = new Date(analysisDateEl.value);
-                     analysisDate.setHours(0, 0, 0, 0);
-                     if (isNaN(analysisDate)) throw new Error("Invalid date string");
-                 } catch (strErr) {
-                     console.error("Failed to parse date string:", strErr);
-                     analysisDate = new Date(); // Fallback to today
-                     analysisDate.setHours(0, 0, 0, 0);
-                 }
-            }
-
+            try { const selectedDate = analysisDateEl.valueAsDate; if (selectedDate && !isNaN(selectedDate)) { analysisDate = selectedDate; analysisDate.setHours(0, 0, 0, 0); } else { console.warn("Invalid date selected, using previous date or today."); analysisDate = new Date(); analysisDate.setHours(0, 0, 0, 0); analysisDateEl.valueAsDate = analysisDate; } } catch (e) { console.error("Error reading analysis date:", e); try { analysisDate = new Date(analysisDateEl.value); analysisDate.setHours(0, 0, 0, 0); if (isNaN(analysisDate)) throw new Error("Invalid date string"); } catch (strErr) { console.error("Failed to parse date string:", strErr); analysisDate = new Date(); analysisDate.setHours(0, 0, 0, 0); } }
             riskBalance = parseInt(riskBalanceEl.value, 10) / 100;
             stagnantThreshold = parseInt(stagnantThresholdEl.value, 10) || 180;
-            watchlistCount = parseInt(watchlistCountEl.value, 10) || 10;
             updateRiskBalanceDisplay();
-            // 設定変更後は再計算が必要なことを示唆
-            recalculateButton.disabled = false; // 再計算ボタンを有効化
-             messageArea.textContent = '設定が変更されました。「再計算」ボタンを押して反映してください。';
-             messageArea.className = 'mt-4 text-center text-orange-600 font-medium h-6';
-             console.log("Settings updated:", { analysisDate, riskBalance, stagnantThreshold, watchlistCount });
+            recalculateButton.disabled = false;
+            messageArea.textContent = '設定が変更されました。「再計算」ボタンを押して反映してください。'; messageArea.className = 'mt-4 text-center text-orange-600 font-medium h-6';
+            console.log("Settings updated:", { analysisDate, riskBalance, stagnantThreshold });
         }
 
-        function updateRiskBalanceDisplay() {
-            riskBalanceValueEl.textContent = `${riskBalanceEl.value}%`;
-        }
+        function updateRiskBalanceDisplay() { riskBalanceValueEl.textContent = `${riskBalanceEl.value}%`; }
 
         // --- データ処理関連 ---
-
-        // Excelシリアル値をDateオブジェクトに変換 (簡易版、1900年閏年問題考慮)
-        function excelSerialToDate(serial) {
-            // Ensure serial is a number
-            const numSerial = Number(serial);
-            if (isNaN(numSerial) || numSerial <= 0) {
-                // console.warn(`Invalid Excel serial number: ${serial}`);
-                return null;
-            }
-
-            // Excel's epoch starts December 30, 1899 (due to Lotus 1-2-3 bug considering 1900 a leap year)
-            // Date objects in JS use milliseconds since Jan 1, 1970, UTC.
-            // Days between 1899-12-30 and 1970-01-01 is 25569
-            // Adjust for the 1900 leap year bug for serial numbers > 60
-            const days = numSerial > 60 ? numSerial - 1 : numSerial;
-            const excelEpochOffset = 25569; // Days from Excel epoch to Unix epoch
-
-            // Calculate milliseconds since Unix epoch
-            const utcMilliseconds = (days - excelEpochOffset) * 24 * 60 * 60 * 1000;
-
-            // Handle fractional part (time)
-            const fractionalDay = numSerial - Math.floor(numSerial);
-            const totalSeconds = Math.round(fractionalDay * 86400); // 86400 seconds in a day
-
-            const resultDate = new Date(utcMilliseconds + totalSeconds * 1000);
-
-             // Check if the resulting date is valid
-            if (isNaN(resultDate.getTime())) {
-                // console.warn(`Excel serial to Date conversion resulted in invalid date for serial: ${serial}`);
-                return null;
-            }
-
-            // The date is calculated in UTC, return it as is or convert to local?
-            // Let's keep it conceptually simple and assume the serial represents a local date.
-            // We create a new Date object using the year, month, day from the UTC calculation.
-            // This avoids timezone issues during the calculation itself.
-            const year = resultDate.getUTCFullYear();
-            const month = resultDate.getUTCMonth();
-            const day = resultDate.getUTCDate();
-
-            const localDate = new Date(year, month, day);
-             localDate.setHours(0,0,0,0); // Reset time part for consistency
-
-             if (isNaN(localDate.getTime())) {
-                 console.warn(`Excel serial to local Date resulted in invalid date for serial: ${serial}`);
-                 return null;
-             }
-            // console.log(`Converted Excel serial ${serial} to ${localDate.toLocaleDateString('ja-JP')}`);
-            return localDate;
-        }
-
-
-        // 日付文字列をパースする関数 (YYYY/MM/DD, YYYY-MM-DD, Excelシリアル対応)
-        function parseDate(dateString) {
-            if (!dateString) return null;
-            const str = String(dateString).trim();
-
-            // 1. YYYY/MM/DD または YYYY-MM-DD 形式 (厳密にチェック)
-            const regex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/;
-            const match = str.match(regex);
-            if (match) {
-                const year = parseInt(match[1], 10);
-                const month = parseInt(match[2], 10) - 1; // Month is 0-indexed
-                const day = parseInt(match[3], 10);
-                // Date object validation: Check if the created date matches the input parts
-                const date = new Date(year, month, day);
-                if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
-                    date.setHours(0, 0, 0, 0);
-                    // console.log(`Parsed date ${str} as ${date.toLocaleDateString('ja-JP')}`);
-                    return date;
-                } else {
-                    // console.warn(`Invalid date components for ${str}`);
-                }
-            }
-
-            // 2. Excelシリアル値形式 (数値かどうか、妥当な範囲か)
-             // Allow numbers with potential decimals, handle them in excelSerialToDate
-            const serial = Number(str);
-             // Check if it's a number and within a plausible Excel date range (e.g., year 1900 to 2200)
-             // Excel serial 1 is 1900-01-01. Serial for 2200-12-31 is around 109575.
-            if (!isNaN(serial) && serial > 0 && serial < 200000) { // Increased upper limit
-                 try {
-                    const excelDate = excelSerialToDate(serial);
-                    if (excelDate && !isNaN(excelDate.getTime())) {
-                        // console.log(`Parsed Excel serial ${str} as ${excelDate.toLocaleDateString('ja-JP')}`);
-                        return excelDate;
-                    } else {
-                         // console.warn(`excelSerialToDate returned invalid date for ${str}`);
-                    }
-                 } catch(e) {
-                    console.error(`Error converting Excel serial ${str}:`, e);
-                 }
-            }
-
-            // 3. その他の形式 (ブラウザのDate.parseに任せる - 信頼性は低い)
-            // Example: "2023年10月26日", "Oct 26, 2023" - behavior varies between browsers
-            try {
-                 const parsed = new Date(str);
-                 if (!isNaN(parsed.getTime())) {
-                     // Verify the parsed date isn't completely wrong (e.g., year 1)
-                     if (parsed.getFullYear() > 1800 && parsed.getFullYear() < 2300) {
-                         parsed.setHours(0, 0, 0, 0);
-                         // console.log(`Parsed date string "${str}" using Date() as ${parsed.toLocaleDateString('ja-JP')}`);
-                         return parsed;
-                     } else {
-                          // console.warn(`Date constructor produced unlikely year for "${str}": ${parsed.getFullYear()}`);
-                     }
-                 }
-            } catch(e) {
-                 // Ignore errors from Date constructor for invalid strings
-            }
-
-
-            console.warn(`Could not parse date: "${str}"`);
-            return null; // パース失敗
-        }
-
-
-        // 日数を計算する関数 (date1 - date2)
-        function calculateDaysBetween(date1, date2) {
-            if (!date1 || !date2 || isNaN(date1.getTime()) || isNaN(date2.getTime())) {
-                // console.warn("Cannot calculate days between invalid dates:", date1, date2);
-                return null; // 無効な日付の場合はnull
-            }
-            // Use UTC dates to avoid issues with daylight saving time changes
-            const utcDate1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate());
-            const utcDate2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate());
-            const diffTime = utcDate1 - utcDate2; // Difference in milliseconds
-            return Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Convert milliseconds to days
-        }
-
-        // TSVデータをパースする関数 (簡易版)
-        function parseTSV(tsvString) {
-            console.log("Parsing TSV data...");
-            if (!tsvString) return { headers: [], data: [] };
-             // Normalize line endings (CRLF, CR -> LF) then split
-            const lines = tsvString.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
-            if (lines.length < 1) return { headers: [], data: [] };
-
-            const tempHeaders = lines[0].split('\t').map(h => h.trim());
-            console.log("Detected Headers:", tempHeaders);
-
-            const data = lines.slice(1).map((line, lineIndex) => {
-                // Simple split by tab. Doesn't handle quotes containing tabs.
-                const values = line.split('\t').map(v => v.trim());
-                let row = {};
-                tempHeaders.forEach((header, index) => {
-                     if (header) { // Only add if header is not empty
-                        row[header] = values[index] !== undefined ? values[index] : ''; // Use undefined check
-                     }
-                });
-                 // Add original line number for potential debugging
-                 row._originalLine = lineIndex + 2;
-                return row;
-            }).filter(row => Object.keys(row).length > 1 || (Object.keys(row).length === 1 && row._originalLine)); // Filter out potentially empty rows unless they have _originalLine
-
-             console.log(`Parsed ${data.length} data rows.`);
-            return { headers: tempHeaders.filter(h => h), data: data }; // Filter out empty headers
-        }
-
-
-        // 必須列のチェック
-        function validateHeaders(parsedHeaders) {
-            const requiredColumns = ['有効期限', '最終出庫', '在庫金額(税別)', '在庫数量', '薬品コード'];
-            const missingColumns = requiredColumns.filter(col => !parsedHeaders.includes(col));
-             if (missingColumns.length > 0) {
-                 console.error("Missing required columns:", missingColumns);
-             }
-            return missingColumns;
-        }
-
-        // データ処理のメイン関数
-        function processInventoryData(inputRawData, currentHeaders) {
-            console.log("Processing inventory data...");
-            const processed = inputRawData.map((item, index) => {
-                const newItem = { ...item, originalIndex: index }; // 元のインデックスを保持
-
-                try {
-                    // --- 値の整形・変換 ---
-                    const priceKey = '在庫金額(税別)';
-                    const quantityKey = '在庫数量';
-
-                    // 在庫金額: カンマを除去して数値に
-                    newItem[priceKey] = item[priceKey] ? parseFloat(String(item[priceKey]).replace(/,/g, '')) : 0;
-                    if (isNaN(newItem[priceKey])) {
-                        // console.warn(`Row ${item._originalLine || index + 1}: Invalid value for ${priceKey}: "${item[priceKey]}". Setting to 0.`);
-                        newItem[priceKey] = 0;
-                    }
-
-                    // 在庫数量: 数値に変換
-                    newItem[quantityKey] = item[quantityKey] ? parseFloat(String(item[quantityKey]).replace(/,/g, '')) : 0;
-                    if (isNaN(newItem[quantityKey])) {
-                         // console.warn(`Row ${item._originalLine || index + 1}: Invalid value for ${quantityKey}: "${item[quantityKey]}". Setting to 0.`);
-                        newItem[quantityKey] = 0;
-                    }
-
-
-                    // --- 日付のパース ---
-                    const expiryDateKey = '有効期限';
-                    const lastOutDateKey = '最終出庫';
-                    const lastInDateKey = '最終入庫'; // 未使用在庫の判定用
-                    const stagnantDateKey = '(停滞)'; // 滞留日数計算用 (優先)
-
-                    newItem.expiryDate = parseDate(item[expiryDateKey]);
-                    newItem.lastOutDate = parseDate(item[lastOutDateKey]);
-                    newItem.lastInDate = parseDate(item[lastInDateKey]); // 最終入庫日もパース
-                    newItem.stagnantDate = item[stagnantDateKey] ? parseDate(item[stagnantDateKey]) : null; // (停滞)列の日付 (存在する場合のみパース)
-
-                    // 整形済み日付文字列
-                    newItem.formattedExpiryDate = newItem.expiryDate ? newItem.expiryDate.toLocaleDateString('ja-JP') : '不明';
-                    newItem.formattedLastOutDate = newItem.lastOutDate ? newItem.lastOutDate.toLocaleDateString('ja-JP') : '記録なし';
-                    newItem.formattedLastInDate = newItem.lastInDate ? newItem.lastInDate.toLocaleDateString('ja-JP') : '不明';
-
-
-                    // --- 残り日数計算 ---
-                    // analysisDate はグローバル変数
-                    newItem.remainingDays = calculateDaysBetween(newItem.expiryDate, analysisDate);
-                    // 期限切れはマイナスになる
-
-                    // --- 滞留日数計算 ---
-                    let stagnantDaysBaseDate = newItem.stagnantDate || newItem.lastOutDate; // (停滞)列があれば優先
-                    if (stagnantDaysBaseDate && !isNaN(stagnantDaysBaseDate.getTime())) {
-                         // analysisDate はグローバル変数
-                        newItem.stagnantDays = calculateDaysBetween(analysisDate, stagnantDaysBaseDate);
-                         // 未来の出庫日など、計算結果がマイナスになる場合は0とする
-                         if (newItem.stagnantDays < 0) {
-                            // console.warn(`Row ${item._originalLine || index + 1}: Calculated negative stagnant days (${newItem.stagnantDays}), setting to 0. Analysis Date: ${analysisDate.toLocaleDateString('ja-JP')}, Base Date: ${stagnantDaysBaseDate.toLocaleDateString('ja-JP')}`);
-                            newItem.stagnantDays = 0;
-                         }
-                    } else {
-                        // 最終出庫記録がない、または(停滞)列がない/無効な場合
-                        newItem.stagnantDays = 9999; // 要件通り9999とする
-                    }
-
-                    // --- 危険度ランク計算 ---
-                    let expiryScore = 0;
-                    let stagnantScore = 0;
-                    const MAX_SCORE = 10;
-
-                    // 期限切れは強制的にランク10
-                    if (newItem.remainingDays !== null && newItem.remainingDays < 0) {
-                        newItem.riskRank = MAX_SCORE;
-                    } else {
-                        // 残り日数スコア (例: 365日以上を0点、0日を10点とする線形スコア)
-                        if (newItem.remainingDays !== null && newItem.remainingDays >= 0) {
-                            // スコア = MAX_SCORE * (1 - 残り日数 / 基準日数)
-                            // 基準日数 (例: 180日でMAX_SCORE)
-                            const expiryBaseDays = 180;
-                            expiryScore = Math.max(0, MAX_SCORE * (1 - newItem.remainingDays / expiryBaseDays));
-                        } else {
-                            expiryScore = MAX_SCORE / 2; // 日付不明は中間点 (5点)
-                        }
-
-                        // 滞留日数スコア (例: 0日を0点、365日以上を10点とする線形スコア)
-                        // 9999 (未使用) の場合は最大スコア
-                        if (newItem.stagnantDays === 9999) {
-                            stagnantScore = MAX_SCORE;
-                        } else if (newItem.stagnantDays !== null && newItem.stagnantDays >= 0) {
-                            // スコア = MAX_SCORE * (滞留日数 / 基準日数)
-                            // 基準日数 (例: 365日でMAX_SCORE)
-                            const stagnantBaseDays = 365;
-                            stagnantScore = Math.min(MAX_SCORE, MAX_SCORE * (newItem.stagnantDays / stagnantBaseDays));
-                        } else {
-                            stagnantScore = 0; // 日付不明は0点
-                        }
-
-                        // 重み付けして合算 (0-10の範囲に収める)
-                        // riskBalance: 0=期限重視, 1=滞留重視 (グローバル変数)
-                        let totalScore = (expiryScore * (1 - riskBalance)) + (stagnantScore * riskBalance);
-                        // ランクは1から10の整数
-                        newItem.riskRank = Math.max(1, Math.min(MAX_SCORE, Math.ceil(totalScore)));
-                    }
-
-                    // --- フラグ設定 ---
-                    newItem.isExpired = newItem.remainingDays !== null && newItem.remainingDays < 0;
-                    newItem.isExpirySoon = newItem.remainingDays !== null && newItem.remainingDays >= 0 && newItem.remainingDays <= 90; // 90日以内
-                    newItem.isStagnant = newItem.stagnantDays >= stagnantThreshold && newItem.stagnantDays !== 9999; // 閾値以上かつ未使用でない
-                    newItem.isUnused = newItem.stagnantDays === 9999; // 滞留日数9999を未使用とする
-
-                } catch (error) {
-                     console.error(`Error processing row ${item._originalLine || index + 1}:`, error, item);
-                     // Add error marker to the item?
-                     newItem._processingError = true;
-                }
-
-                return newItem;
-            });
-
-            // 除外リストに基づいてフィルタリング
-            excludeCodes = new Set(excludeListEl.value.split('\n').map(code => code.trim()).filter(code => code));
-            const filtered = processed.filter(item => {
-                 // Skip items with processing errors
-                 if (item._processingError) return false;
-                 // Apply exclusion list
-                 const codeKey = '薬品コード';
-                 return !excludeCodes.has(item[codeKey]);
-             });
-
-            console.log(`Finished processing. ${filtered.length} items remaining after filtering.`);
-            return filtered;
-        }
-
+        function excelSerialToDate(serial) { const numSerial = Number(serial); if (isNaN(numSerial) || numSerial <= 0) return null; const days = numSerial > 60 ? numSerial - 1 : numSerial; const excelEpochOffset = 25569; const utcMilliseconds = (days - excelEpochOffset) * 24 * 60 * 60 * 1000; const fractionalDay = numSerial - Math.floor(numSerial); const totalSeconds = Math.round(fractionalDay * 86400); const resultDate = new Date(utcMilliseconds + totalSeconds * 1000); if (isNaN(resultDate.getTime())) return null; const year = resultDate.getUTCFullYear(); const month = resultDate.getUTCMonth(); const day = resultDate.getUTCDate(); const localDate = new Date(year, month, day); localDate.setHours(0,0,0,0); if (isNaN(localDate.getTime())) return null; return localDate; }
+        function parseDate(dateString) { if (!dateString) return null; const str = String(dateString).trim(); const regex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/; const match = str.match(regex); if (match) { const year = parseInt(match[1], 10); const month = parseInt(match[2], 10) - 1; const day = parseInt(match[3], 10); const date = new Date(year, month, day); if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) { date.setHours(0, 0, 0, 0); return date; } } const serial = Number(str); if (!isNaN(serial) && serial > 0 && serial < 200000) { try { const excelDate = excelSerialToDate(serial); if (excelDate && !isNaN(excelDate.getTime())) return excelDate; } catch(e) { console.error(`Error converting Excel serial ${str}:`, e); } } try { const parsed = new Date(str); if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1800 && parsed.getFullYear() < 2300) { parsed.setHours(0, 0, 0, 0); return parsed; } } catch(e) {} console.warn(`Could not parse date: "${str}"`); return null; }
+        function calculateDaysBetween(date1, date2) { if (!date1 || !date2 || isNaN(date1.getTime()) || isNaN(date2.getTime())) return null; const utcDate1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate()); const utcDate2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate()); const diffTime = utcDate1 - utcDate2; return Math.floor(diffTime / (1000 * 60 * 60 * 24)); }
+        function parseTSV(tsvString) { console.log("Parsing TSV data..."); if (!tsvString) return { headers: [], data: [] }; const lines = tsvString.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n'); if (lines.length < 1) return { headers: [], data: [] }; const tempHeaders = lines[0].split('\t').map(h => h.trim()); console.log("Detected Headers:", tempHeaders); const data = lines.slice(1).map((line, lineIndex) => { const values = line.split('\t').map(v => v.trim()); let row = {}; tempHeaders.forEach((header, index) => { if (header) row[header] = values[index] !== undefined ? values[index] : ''; }); row._originalLine = lineIndex + 2; return row; }).filter(row => Object.keys(row).length > 1 || (Object.keys(row).length === 1 && row._originalLine)); console.log(`Parsed ${data.length} data rows.`); return { headers: tempHeaders.filter(h => h), data: data }; }
+        function validateHeaders(parsedHeaders) { const requiredColumns = ['有効期限', '最終出庫', '在庫金額(税別)', '在庫数量', '薬品コード']; const missingColumns = requiredColumns.filter(col => !parsedHeaders.includes(col)); if (missingColumns.length > 0) console.error("Missing required columns:", missingColumns); return missingColumns; }
+        function processInventoryData(inputRawData, currentHeaders) { console.log("Processing inventory data..."); const processed = inputRawData.map((item, index) => { const newItem = { ...item, originalIndex: index }; try { const priceKey = '在庫金額(税別)'; const quantityKey = '在庫数量'; newItem[priceKey] = item[priceKey] ? parseFloat(String(item[priceKey]).replace(/,/g, '')) : 0; if (isNaN(newItem[priceKey])) newItem[priceKey] = 0; newItem[quantityKey] = item[quantityKey] ? parseFloat(String(item[quantityKey]).replace(/,/g, '')) : 0; if (isNaN(newItem[quantityKey])) newItem[quantityKey] = 0; const expiryDateKey = '有効期限'; const lastOutDateKey = '最終出庫'; const lastInDateKey = '最終入庫'; const stagnantDateKey = '(停滞)'; newItem.expiryDate = parseDate(item[expiryDateKey]); newItem.lastOutDate = parseDate(item[lastOutDateKey]); newItem.lastInDate = parseDate(item[lastInDateKey]); newItem.stagnantDate = item[stagnantDateKey] ? parseDate(item[stagnantDateKey]) : null; newItem.formattedExpiryDate = newItem.expiryDate ? newItem.expiryDate.toLocaleDateString('ja-JP') : '不明'; newItem.formattedLastOutDate = newItem.lastOutDate ? newItem.lastOutDate.toLocaleDateString('ja-JP') : '記録なし'; newItem.formattedLastInDate = newItem.lastInDate ? newItem.lastInDate.toLocaleDateString('ja-JP') : '不明'; newItem.remainingDays = calculateDaysBetween(newItem.expiryDate, analysisDate); let stagnantDaysBaseDate = newItem.stagnantDate || newItem.lastOutDate; if (stagnantDaysBaseDate && !isNaN(stagnantDaysBaseDate.getTime())) { newItem.stagnantDays = calculateDaysBetween(analysisDate, stagnantDaysBaseDate); if (newItem.stagnantDays < 0) newItem.stagnantDays = 0; } else { newItem.stagnantDays = 9999; } let expiryScore = 0, stagnantScore = 0; const MAX_SCORE = 10; if (newItem.remainingDays !== null && newItem.remainingDays < 0) { newItem.riskRank = MAX_SCORE; } else { if (newItem.remainingDays !== null && newItem.remainingDays >= 0) { const expiryBaseDays = 180; expiryScore = Math.max(0, MAX_SCORE * (1 - newItem.remainingDays / expiryBaseDays)); } else { expiryScore = MAX_SCORE / 2; } if (newItem.stagnantDays === 9999) { stagnantScore = MAX_SCORE; } else if (newItem.stagnantDays !== null && newItem.stagnantDays >= 0) { const stagnantBaseDays = 365; stagnantScore = Math.min(MAX_SCORE, MAX_SCORE * (newItem.stagnantDays / stagnantBaseDays)); } else { stagnantScore = 0; } let totalScore = (expiryScore * (1 - riskBalance)) + (stagnantScore * riskBalance); newItem.riskRank = Math.max(1, Math.min(MAX_SCORE, Math.ceil(totalScore))); } newItem.isExpired = newItem.remainingDays !== null && newItem.remainingDays < 0; newItem.isExpirySoon = newItem.remainingDays !== null && newItem.remainingDays >= 0 && newItem.remainingDays <= 90; newItem.isStagnant = newItem.stagnantDays >= stagnantThreshold && newItem.stagnantDays !== 9999; newItem.isUnused = newItem.stagnantDays === 9999; newItem.isNormal = !newItem.isExpired && !newItem.isExpirySoon && !newItem.isStagnant && !newItem.isUnused; newItem.isHighRisk = newItem.riskRank >= 8; } catch (error) { console.error(`Error processing row ${item._originalLine || index + 1}:`, error, item); newItem._processingError = true; } return newItem; }); excludeCodes = new Set(excludeListEl.value.split('\n').map(code => code.trim()).filter(code => code)); const filtered = processed.filter(item => !item._processingError && !excludeCodes.has(item['薬品コード'])); console.log(`Finished processing. ${filtered.length} items remaining after filtering.`); return filtered; }
 
         // --- UI更新関数 ---
-
-        // KPI表示を更新
-        function updateDashboardKPIs(data) {
-            kpiArea.innerHTML = ''; // クリア
-            if (!data || data.length === 0) return;
-
-            const totalItems = data.length;
-            const totalValue = data.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
-
-            const highRiskItems = data.filter(item => item.riskRank >= 8); // 例: ランク8以上を要注意
-            const highRiskCount = highRiskItems.length;
-            const highRiskValue = highRiskItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
-
-            const stagnantItems = data.filter(item => item.isStagnant);
-            const stagnantCount = stagnantItems.length;
-            const stagnantValue = stagnantItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
-
-            const expirySoonItems = data.filter(item => item.isExpirySoon);
-            const expirySoonCount = expirySoonItems.length;
-            const expirySoonValue = expirySoonItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
-
-            const unusedItems = data.filter(item => item.isUnused);
-            const unusedCount = unusedItems.length;
-            const unusedValue = unusedItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
-
-            const kpis = [
-                { label: '総在庫品目数', value: totalItems.toLocaleString() },
-                { label: '総在庫金額(税別)', value: `¥${Math.round(totalValue).toLocaleString()}` },
-                { label: `要注意在庫 (${highRiskCount}品目)`, value: `¥${Math.round(highRiskValue).toLocaleString()}`, highlight: true },
-                { label: `滞留在庫 (${stagnantCount}品目)`, value: `¥${Math.round(stagnantValue).toLocaleString()}`, highlight: true },
-                { label: `期限切迫在庫 (${expirySoonCount}品目)`, value: `¥${Math.round(expirySoonValue).toLocaleString()}`, highlight: true },
-                { label: `未使用在庫 (${unusedCount}品目)`, value: `¥${Math.round(unusedValue).toLocaleString()}`, highlight: true },
-            ];
-
-            kpis.forEach(kpi => {
-                const div = document.createElement('div');
-                div.className = `p-4 rounded-lg shadow ${kpi.highlight ? 'bg-red-100' : 'bg-blue-50'}`;
-                div.innerHTML = `
-                    <dt class="text-sm font-medium text-gray-500 truncate">${kpi.label}</dt>
-                    <dd class="mt-1 text-xl font-semibold ${kpi.highlight ? 'text-red-700' : 'text-blue-800'}">${kpi.value}</dd>
-                `;
-                kpiArea.appendChild(div);
-            });
-        }
-
-        // 注目リスト表示を更新
-        function updateDashboardWatchlists(data) {
-            watchlistArea.innerHTML = ''; // クリア
-             if (!data || data.length === 0) return;
-
-            const createListElement = (title, items, displayFields) => {
-                const div = document.createElement('div');
-                div.className = 'p-4 border rounded-md bg-white shadow';
-                let listHtml = `<h3 class="text-md font-semibold mb-2 text-gray-700">${title} (上位${watchlistCount}件)</h3>`;
-                listHtml += '<ul class="divide-y divide-gray-200 text-sm">';
-                if (items.length === 0) {
-                    listHtml += '<li class="py-1 text-gray-500">該当なし</li>';
-                } else {
-                    items.slice(0, watchlistCount).forEach(item => {
-                        const displayValues = displayFields.map(field => {
-                            let value = item[field.key];
-                            if (field.format === 'date') value = item.formattedExpiryDate; // Assumes formattedExpiryDate exists
-                            else if (field.format === 'days') value = value !== null ? `${value}日` : '-';
-                             else if (field.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null ? `${value}日` : '-');
-                            else if (field.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`;
-                            else if (field.format === 'number') value = (value || 0).toLocaleString();
-                            else if (field.key === 'formattedLastInDate') value = item.formattedLastInDate; // Use pre-formatted
-                            return `<span class="font-medium">${field.label}:</span> ${value || '-'}`;
-                        }).join(', ');
-                         const itemName = item['薬品名称'] || item['薬品コード'] || '不明な薬品'; // Fallback name
-                        listHtml += `<li class="py-1">${itemName}: ${displayValues}</li>`;
-                    });
-                }
-                listHtml += '</ul>';
-                div.innerHTML = listHtml;
-                return div;
-            };
-
-            // 滞留日数ワースト（未使用除く）
-            const stagnantWorst = [...data]
-                .filter(item => !item.isUnused && item.stagnantDays !== null) // 未使用を除き、日数計算可能なもの
-                .sort((a, b) => (b.stagnantDays || 0) - (a.stagnantDays || 0));
-            watchlistArea.appendChild(createListElement('滞留日数ワースト', stagnantWorst, [
-                 { key: 'stagnantDays', label: '滞留', format: 'days' }
-            ]));
-
-            // 有効期限切迫
-            const expirySoon = [...data]
-                .filter(item => item.remainingDays !== null && item.remainingDays >= 0) // 期限切れは除き、日数計算可能なもの
-                .sort((a, b) => (a.remainingDays || Infinity) - (b.remainingDays || Infinity));
-            watchlistArea.appendChild(createListElement('有効期限切迫', expirySoon, [
-                { key: 'remainingDays', label: '残り', format: 'days' },
-                { key: 'formattedExpiryDate', label: '期限' } // Use pre-formatted
-            ]));
-
-
-            // 在庫金額トップ
-            const amountTop = [...data]
-                 .filter(item => item['在庫金額(税別)'] !== null && item['在庫金額(税別)'] !== undefined) // 金額が計算可能なもの
-                .sort((a, b) => (b['在庫金額(税別)'] || 0) - (a['在庫金額(税別)'] || 0));
-            watchlistArea.appendChild(createListElement('在庫金額トップ', amountTop, [
-                { key: '在庫金額(税別)', label: '金額', format: 'currency' }
-            ]));
-
-            // 未使用在庫（最終入庫が古い順）
-            const unusedOldestIn = [...data]
-                .filter(item => item.isUnused)
-                .sort((a, b) => {
-                    // Handle cases where lastInDate might be null
-                    const timeA = a.lastInDate ? a.lastInDate.getTime() : 0; // Treat null as very old
-                    const timeB = b.lastInDate ? b.lastInDate.getTime() : 0;
-                    return timeA - timeB; // Ascending order (oldest first)
-                });
-             watchlistArea.appendChild(createListElement('未使用在庫 (最終入庫日順)', unusedOldestIn, [
-                 { key: 'formattedLastInDate', label: '最終入庫'}
-             ]));
-        }
-
-        // 在庫一覧テーブルを更新
-        function updateInventoryList() {
-             console.log("Updating inventory list...");
-             if (!processedData) {
-                 console.warn("processedData is not available for inventory list update.");
-                 return;
-             }
-            // 1. フィルタリング
-            let filteredData = processedData.filter(item => {
-                // カテゴリフィルタ
-                const categoryKey = '薬品種別'; // Ensure this key exists in your data
-                if (inventoryFilterCategory && item[categoryKey] !== inventoryFilterCategory) {
-                    return false;
-                }
-                // 危険度ランクフィルタ
-                if (inventoryFilterRisk && String(item.riskRank) !== inventoryFilterRisk) {
-                    return false;
-                }
-                // 検索フィルタ (薬品名称, フリガナ, メーカー名, コード)
-                if (inventorySearchTerm) {
-                    const term = inventorySearchTerm.toLowerCase().trim();
-                     if (term === '') return true; // Ignore empty search term after trim
-
-                    const name = String(item['薬品名称'] || '').toLowerCase();
-                    const kana = String(item['フリガナ'] || '').toLowerCase(); // Basic kana search
-                    const maker = String(item['メーカー'] || '').toLowerCase();
-                    const code = String(item['薬品コード'] || '').toLowerCase();
-                    if (!name.includes(term) && !kana.includes(term) && !maker.includes(term) && !code.includes(term)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-             console.log(`Filtering complete. ${filteredData.length} items match filters.`);
-
-            // 2. ソート
-            if (inventorySortColumn) {
-                 console.log(`Sorting by ${inventorySortColumn} (${inventorySortDirection})`);
-                filteredData.sort((a, b) => {
-                    let valA = a[inventorySortColumn];
-                    let valB = b[inventorySortColumn];
-                    const direction = inventorySortDirection === 'asc' ? 1 : -1;
-
-                    // Handle specific data types for comparison
-                    if (valA instanceof Date && valB instanceof Date) {
-                        return (valA.getTime() - valB.getTime()) * direction;
-                    } else if (valA instanceof Date) {
-                        return -1 * direction; // Dates before non-dates (or nulls)
-                    } else if (valB instanceof Date) {
-                        return 1 * direction; // Non-dates (or nulls) after dates
-                    } else if (typeof valA === 'number' && typeof valB === 'number') {
-                         // Handle NaN values - treat them as less than numbers
-                         if (isNaN(valA) && !isNaN(valB)) return -1 * direction;
-                         if (!isNaN(valA) && isNaN(valB)) return 1 * direction;
-                         if (isNaN(valA) && isNaN(valB)) return 0;
-                        return (valA - valB) * direction;
-                    } else if (typeof valA === 'number') {
-                         return -1 * direction; // Numbers before strings/nulls
-                    } else if (typeof valB === 'number') {
-                         return 1 * direction; // Strings/nulls after numbers
-                    } else {
-                        // String comparison (case-insensitive)
-                        valA = String(valA || '').toLowerCase(); // Treat null/undefined as empty string
-                        valB = String(valB || '').toLowerCase();
-                        return valA.localeCompare(valB) * direction;
-                    }
-                });
-            }
-
-            // 3. ページネーション
-            const totalFilteredItems = filteredData.length;
-            let paginatedData = [];
-            let totalPages = 1;
-
-            if (inventoryPageSize === 'all') {
-                paginatedData = filteredData;
-                inventoryCurrentPage = 1; // 全件表示の場合は常に1ページ目
-                 totalPages = 1;
-            } else {
-                const size = parseInt(inventoryPageSize, 10);
-                totalPages = totalFilteredItems > 0 ? Math.ceil(totalFilteredItems / size) : 1;
-                // Ensure currentPage is valid
-                inventoryCurrentPage = Math.max(1, Math.min(inventoryCurrentPage, totalPages));
-                const startIndex = (inventoryCurrentPage - 1) * size;
-                const endIndex = startIndex + size;
-                paginatedData = filteredData.slice(startIndex, endIndex);
-            }
-             console.log(`Pagination complete. Displaying page ${inventoryCurrentPage} of ${totalPages}. Items on page: ${paginatedData.length}`);
-
-
-            // 4. テーブル描画
-            renderInventoryTable(paginatedData);
-
-            // 5. ページネーションコントロール描画
-            renderInventoryPagination(totalFilteredItems, totalPages);
-
-            // 6. サマリー表示
-             const startItemNum = totalFilteredItems === 0 ? 0 : (inventoryCurrentPage - 1) * parseInt(inventoryPageSize === 'all' ? totalFilteredItems : inventoryPageSize, 10) + 1;
-             const endItemNum = inventoryPageSize === 'all' ? totalFilteredItems : Math.min(startItemNum + parseInt(inventoryPageSize, 10) - 1, totalFilteredItems);
-             if (totalFilteredItems > 0) {
-                 inventoryListSummary.textContent = `全 ${processedData.length} 件中 ${totalFilteredItems} 件が該当 (${startItemNum}-${endItemNum}件目を表示)`;
-             } else {
-                 inventoryListSummary.textContent = `全 ${processedData.length} 件中 該当データなし`;
-             }
-        }
-
-
-        // 在庫一覧テーブルのヘッダー定義 (表示列とソートキー)
-        const inventoryTableHeadersConfig = [
-            { key: '薬品コード', label: 'コード', sortable: true },
-            { key: '薬品名称', label: '薬品名称', sortable: true },
-            { key: 'フリガナ', label: 'フリガナ', sortable: true },
-            { key: 'メーカー', label: 'メーカー', sortable: true },
-            { key: '薬品種別', label: '種別', sortable: true }, // filterCategoryEl の更新も必要
-            { key: '在庫数量', label: '数量', sortable: true, align: 'right', format: 'number' },
-            { key: '単位', label: '単位', sortable: false },
-            { key: '在庫金額(税別)', label: '金額(税別)', sortable: true, align: 'right', format: 'currency' },
-            { key: 'formattedExpiryDate', label: '有効期限', sortable: true, originalSortKey: 'expiryDate' }, // ソートは元の日付で
-            { key: 'remainingDays', label: '残り日数', sortable: true, align: 'right', format: 'days' },
-            { key: 'formattedLastOutDate', label: '最終出庫', sortable: true, originalSortKey: 'lastOutDate' }, // ソートは元の日付で
-            { key: 'stagnantDays', label: '滞留日数', sortable: true, align: 'right', format: 'daysOr9999' },
-            { key: 'riskRank', label: '危険度', sortable: true, align: 'center' },
-            { key: 'formattedLastInDate', label: '最終入庫', sortable: true, originalSortKey: 'lastInDate'}, // ソートは元の日付で
-            // 他に必要なヘッダーがあれば追加
-        ];
-
-        // 在庫一覧テーブルのヘッダーを生成
-        function renderInventoryTableHeader() {
-            inventoryTableHeader.innerHTML = ''; // クリア
-            inventoryTableHeadersConfig.forEach(headerInfo => {
-                const th = document.createElement('th');
-                th.scope = 'col';
-                th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${headerInfo.align === 'right' ? 'text-right' : (headerInfo.align === 'center' ? 'text-center' : '')}`;
-                th.textContent = headerInfo.label;
-                if (headerInfo.sortable) {
-                    th.style.cursor = 'pointer';
-                    const sortKey = headerInfo.originalSortKey || headerInfo.key; // ソート用のキー
-                    th.addEventListener('click', () => handleInventorySort(sortKey));
-                    // ソート中の列にアイコン表示
-                    if (sortKey === inventorySortColumn) {
-                        th.innerHTML += inventorySortDirection === 'asc' ? ' <span class="text-blue-500">&uarr;</span>' : ' <span class="text-blue-500">&darr;</span>';
-                    }
-                }
-                inventoryTableHeader.appendChild(th);
-            });
-        }
-
-        // 在庫一覧テーブルのボディを描画
-        function renderInventoryTable(data) {
-            inventoryTableBody.innerHTML = ''; // クリア
-            if (data.length === 0) {
-                inventoryTableBody.innerHTML = `<tr><td colspan="${inventoryTableHeadersConfig.length}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">表示するデータがありません</td></tr>`;
-                return;
-            }
-
-            data.forEach(item => {
-                const tr = document.createElement('tr');
-                // 条件付き書式クラスを適用
-                let rowClass = '';
-                 if (item.riskRank >= 8) rowClass = 'row-danger-high'; // 危険度高
-                 else if (item.isExpired) rowClass = 'row-danger-high'; // 期限切れも高リスク色
-                 else if (item.isExpirySoon) rowClass = 'row-warning-expiry'; // 期限切迫
-                 else if (item.isStagnant) rowClass = 'row-warning-stagnant'; // 滞留
-                 else if (item.isUnused) rowClass = 'row-unused'; // 未使用
-                tr.className = rowClass;
-
-
-                inventoryTableHeadersConfig.forEach(headerInfo => {
-                     const td = document.createElement('td');
-                     td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800';
-                     let value = item[headerInfo.key];
-
-                     // 表示フォーマット
-                     if (headerInfo.format === 'currency') {
-                         value = `¥${Math.round(value || 0).toLocaleString()}`;
-                     } else if (headerInfo.format === 'number') {
-                         value = (value || 0).toLocaleString();
-                     } else if (headerInfo.format === 'days') {
-                         value = value !== null && !isNaN(value) ? `${value}日` : '-';
-                     } else if (headerInfo.format === 'daysOr9999') {
-                         value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-');
-                     }
-
-                     td.textContent = value !== undefined && value !== null ? String(value) : '-'; // Ensure textContent is string
-                     if (headerInfo.align === 'right') td.classList.add('text-right');
-                     if (headerInfo.align === 'center') td.classList.add('text-center');
-
-                     // 特定の列にスタイル適用 (例: 危険度ランク)
-                     if (headerInfo.key === 'riskRank') {
-                         td.classList.add('font-bold');
-                         if (item.riskRank >= 8) td.classList.add('text-red-600');
-                         else if (item.riskRank >= 5) td.classList.add('text-yellow-600');
-                     }
-                      if (headerInfo.key === 'remainingDays' && item.isExpired) {
-                          td.classList.add('text-red-600', 'font-bold'); // 期限切れを強調
-                      } else if (headerInfo.key === 'remainingDays' && item.isExpirySoon) {
-                          td.classList.add('text-yellow-600');
-                      }
-                       if (headerInfo.key === 'stagnantDays' && item.isStagnant) {
-                          td.classList.add('text-blue-600');
-                      }
-                       if (headerInfo.key === 'stagnantDays' && item.isUnused) {
-                          td.classList.add('text-gray-500');
-                      }
-
-                     tr.appendChild(td);
-                 });
-                inventoryTableBody.appendChild(tr);
-            });
-        }
-
-         // 在庫一覧のフィルタオプションを更新 (薬品種別、危険度ランク)
-        function updateInventoryFilterOptions() {
-             if (!processedData) return;
-             console.log("Updating filter options...");
-
-            // 薬品種別
-            const categoryKey = '薬品種別'; // Ensure this key exists
-            try {
-                const categories = [...new Set(processedData.map(item => item[categoryKey]).filter(Boolean))].sort();
-                filterCategoryEl.innerHTML = '<option value="">すべて</option>'; // Reset
-                categories.forEach(cat => {
-                    const option = document.createElement('option');
-                    option.value = cat;
-                    option.textContent = cat;
-                    filterCategoryEl.appendChild(option);
-                });
-                 filterCategoryEl.value = inventoryFilterCategory; // Restore selection
-            } catch (e) {
-                console.error("Error updating category filter:", e);
-                 filterCategoryEl.innerHTML = '<option value="">エラー</option>';
-            }
-
-
-            // 危険度ランク
-            try {
-                const risks = [...new Set(processedData.map(item => item.riskRank).filter(r => r !== null && r !== undefined))].sort((a, b) => a - b);
-                filterRiskEl.innerHTML = '<option value="">すべて</option>'; // Reset
-                risks.forEach(rank => {
-                    const option = document.createElement('option');
-                    option.value = String(rank);
-                    option.textContent = `ランク ${rank}`;
-                    filterRiskEl.appendChild(option);
-                });
-                 filterRiskEl.value = inventoryFilterRisk; // Restore selection
-             } catch (e) {
-                 console.error("Error updating risk filter:", e);
-                 filterRiskEl.innerHTML = '<option value="">エラー</option>';
-             }
-             console.log("Filter options updated.");
-        }
-
-
-        // 在庫一覧のページネーションコントロールを描画
-        function renderInventoryPagination(totalItems, totalPages) {
-            inventoryPagination.innerHTML = ''; // クリア
-            if (totalPages <= 1) return; // 1ページ以下なら不要
-
-            const createButton = (text, page, isDisabled = false, isActive = false) => {
-                const button = document.createElement('button');
-                button.innerHTML = text; // Use innerHTML for arrows
-                button.disabled = isDisabled;
-                button.className = `px-3 py-1 text-sm border rounded-md ${
-                    isActive ? 'bg-blue-500 text-white border-blue-500 cursor-default' :
-                    isDisabled ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' :
-                    'bg-white text-blue-600 border-gray-300 hover:bg-gray-100'
-                }`;
-                if (!isDisabled && !isActive) {
-                    button.onclick = () => {
-                        inventoryCurrentPage = page;
-                        updateInventoryList();
-                    };
-                }
-                return button;
-            };
-
-            // Previous Button
-            inventoryPagination.appendChild(createButton('&laquo; 前へ', inventoryCurrentPage - 1, inventoryCurrentPage === 1));
-
-            // Page Number Buttons (show current, neighbors, first, last, and ellipses)
-            const maxPagesToShow = 3; // How many page numbers around the current page
-            const pages = [];
-
-            // Always show first page
-            pages.push(createButton('1', 1, false, inventoryCurrentPage === 1));
-
-            // Ellipsis after first page?
-            if (inventoryCurrentPage > maxPagesToShow + 1) {
-                 const span = document.createElement('span');
-                 span.textContent = '...';
-                 span.className = 'px-2 py-1 text-sm text-gray-500';
-                 pages.push(span);
-            }
-
-            // Pages around current page
-            const startPage = Math.max(2, inventoryCurrentPage - Math.floor((maxPagesToShow -1) / 2));
-            const endPage = Math.min(totalPages - 1, inventoryCurrentPage + Math.floor(maxPagesToShow / 2));
-
-            for (let i = startPage; i <= endPage; i++) {
-                pages.push(createButton(String(i), i, false, i === inventoryCurrentPage));
-            }
-
-             // Ellipsis before last page?
-            if (inventoryCurrentPage < totalPages - maxPagesToShow) {
-                 const span = document.createElement('span');
-                 span.textContent = '...';
-                 span.className = 'px-2 py-1 text-sm text-gray-500';
-                 pages.push(span);
-            }
-
-            // Always show last page (if more than 1 page)
-            if (totalPages > 1) {
-                pages.push(createButton(String(totalPages), totalPages, false, inventoryCurrentPage === totalPages));
-            }
-
-            pages.forEach(p => inventoryPagination.appendChild(p));
-
-            // Next Button
-            inventoryPagination.appendChild(createButton('次へ &raquo;', inventoryCurrentPage + 1, inventoryCurrentPage === totalPages));
-        }
-
-
-        // 分析レポートテーブルを更新
-        function updateAnalysisReport() {
-             console.log(`Updating analysis report for tab: ${reportCurrentTab}`);
-             if (!processedData) {
-                 console.warn("processedData is not available for analysis report update.");
-                 return;
-             }
-
-            let reportData = [];
-            let sortKey = '';
-            let sortDirection = 'desc'; // デフォルトは降順 (ワースト系)
-            let displayHeadersConfig = []; // レポートの種類に応じたヘッダー
-
-            const baseHeaders = [
-                { key: '薬品コード', label: 'コード' },
-                { key: '薬品名称', label: '薬品名称' },
-                { key: 'メーカー', label: 'メーカー' },
-            ];
-
-            // Define report configurations
-             const reportConfigs = {
-                'amountWorst': {
-                    sortKey: '在庫金額(税別)', sortDirection: 'desc', filter: item => true,
-                    headers: [
-                        ...baseHeaders,
-                        { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
-                        { key: '在庫数量', label: '数量', format: 'number', align: 'right' },
-                    ]
-                },
-                'stagnantWorst': {
-                    sortKey: 'stagnantDays', sortDirection: 'desc', filter: item => !item.isUnused && item.stagnantDays !== null, // 未使用除く
-                    headers: [
-                        ...baseHeaders,
-                        { key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' },
-                        { key: 'formattedLastOutDate', label: '最終出庫' },
-                    ]
-                },
-                'expirySoon': {
-                    sortKey: 'remainingDays', sortDirection: 'asc', filter: item => item.remainingDays !== null && item.remainingDays >= 0, // 期限切れ除く
-                    headers: [
-                        ...baseHeaders,
-                        { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
-                        { key: 'formattedExpiryDate', label: '有効期限' },
-                    ]
-                },
-                'riskWorst': {
-                    sortKey: 'riskRank', sortDirection: 'desc', filter: item => true,
-                    headers: [
-                        ...baseHeaders,
-                        { key: 'riskRank', label: '危険度ランク', align: 'center' },
-                        { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
-                        { key: 'stagnantDays', label: '滞留日数', format: 'daysOr9999', align: 'right' },
-                    ]
-                },
-                 'unused': {
-                    sortKey: 'lastInDate', sortDirection: 'asc', filter: item => item.isUnused, // 古い順
-                    headers: [
-                        ...baseHeaders,
-                        { key: 'formattedLastInDate', label: '最終入庫日' },
-                         { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
-                    ]
-                }
-                 // Add other report types here...
-            };
-
-             const currentConfig = reportConfigs[reportCurrentTab];
-
-             if (!currentConfig) {
-                 console.error(`Invalid report tab selected: ${reportCurrentTab}`);
-                 renderReportTable([], baseHeaders); // Render empty table with base headers
-                 return;
-             }
-
-            sortKey = currentConfig.sortKey;
-            sortDirection = currentConfig.sortDirection;
-            displayHeadersConfig = currentConfig.headers;
-
-            // フィルター適用
-            reportData = processedData.filter(currentConfig.filter);
-             console.log(`Filtered report data (${reportCurrentTab}): ${reportData.length} items`);
-
-
-            // ソート
-            reportData.sort((a, b) => {
-                 let valA = a[sortKey];
-                 let valB = b[sortKey];
-                 const direction = sortDirection === 'asc' ? 1 : -1;
-
-                 // Handle specific data types for comparison
-                 if (valA instanceof Date && valB instanceof Date) {
-                     return (valA.getTime() - valB.getTime()) * direction;
-                 } else if (valA instanceof Date) {
-                     return -1 * direction; // Dates first
-                 } else if (valB instanceof Date) {
-                     return 1 * direction;
-                 } else if (sortKey === 'stagnantDays') { // Special handling for 9999
-                     if (valA === 9999 && valB !== 9999) return -1 * direction; // 9999 first in desc, last in asc
-                     if (valB === 9999 && valA !== 9999) return 1 * direction;
-                     if (valA === 9999 && valB === 9999) return 0;
-                 }
-
-                 if (typeof valA === 'number' && typeof valB === 'number') {
-                     if (isNaN(valA) && !isNaN(valB)) return -1 * direction;
-                     if (!isNaN(valA) && isNaN(valB)) return 1 * direction;
-                     if (isNaN(valA) && isNaN(valB)) return 0;
-                     return (valA - valB) * direction;
-                 } else if (typeof valA === 'number') {
-                     return -1 * direction; // Numbers first
-                 } else if (typeof valB === 'number') {
-                     return 1 * direction;
-                 } else {
-                     // String comparison
-                     valA = String(valA || '').toLowerCase();
-                     valB = String(valB || '').toLowerCase();
-                     return valA.localeCompare(valB) * direction;
-                 }
-            });
-
-             console.log(`Sorted report data.`);
-
-            // 上位3件除外
-            let startIndex = 0;
-            if (reportExcludeTop3) {
-                startIndex = 3;
-                reportData = reportData.slice(startIndex);
-                 console.log(`Excluded top 3. ${reportData.length} items remain.`);
-            }
-
-            // 表示件数制限
-            const count = reportCount === 'all' ? reportData.length : parseInt(reportCount, 10);
-            const finalReportData = reportData.slice(0, count);
-             console.log(`Limited to ${count} items. Final count: ${finalReportData.length}`);
-
-
-            // テーブル描画
-            renderReportTable(finalReportData, displayHeadersConfig, startIndex); // Pass startIndex for numbering
-        }
-
-        // 分析レポートテーブルを描画 (Corrected version)
-        function renderReportTable(data, headersConfig, startIndex = 0) {
-            // ヘッダー描画
-            reportTableHeader.innerHTML = ''; // Clear existing header cells in the <tr>
-            const headerRow = reportTableHeader; // Use the existing <tr> element
-
-            // Add '#' cell for sequence number
-            const thNum = document.createElement('th');
-            thNum.scope = 'col';
-            thNum.className = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-            thNum.textContent = '#';
-            headerRow.appendChild(thNum); // Append '#' header cell
-
-            // Add other header cells
-            headersConfig.forEach(conf => {
-                const th = document.createElement('th');
-                th.scope = 'col';
-                th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${conf.align === 'right' ? 'text-right' : (conf.align === 'center' ? 'text-center' : '')}`;
-                th.textContent = conf.label;
-                headerRow.appendChild(th); // Append other header cells directly to the <tr>
-            });
-
-
-            // ボディ描画
-            reportTableBody.innerHTML = ''; // Clear existing body
-            if (data.length === 0) {
-                // +1 for the '#' column
-                reportTableBody.innerHTML = `<tr><td colspan="${headersConfig.length + 1}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">表示するデータがありません</td></tr>`;
-                return;
-            }
-
-            data.forEach((item, index) => {
-                const tr = reportTableBody.insertRow(); // Insert row into tbody
-                // Apply conditional formatting class
-                let rowClass = '';
-                 if (item.riskRank >= 8) rowClass = 'row-danger-high';
-                 else if (item.isExpired) rowClass = 'row-danger-high';
-                 else if (item.isExpirySoon) rowClass = 'row-warning-expiry';
-                 else if (item.isStagnant) rowClass = 'row-warning-stagnant';
-                 else if (item.isUnused) rowClass = 'row-unused';
-                tr.className = rowClass;
-
-                // Add '#' cell for data row
-                const tdNum = tr.insertCell();
-                tdNum.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800 text-center'; // Center align sequence number
-                tdNum.textContent = index + 1 + startIndex; // Sequence number (considering exclusion offset)
-
-
-                // Add data cells based on headersConfig
-                headersConfig.forEach(conf => {
-                    const td = tr.insertCell(); // Insert cell into the current row
-                    td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800';
-                    let value = item[conf.key];
-
-                    // Apply formatting
-                     if (conf.format === 'currency') {
-                         value = `¥${Math.round(value || 0).toLocaleString()}`;
-                     } else if (conf.format === 'number') {
-                         value = (value || 0).toLocaleString();
-                     } else if (conf.format === 'days') {
-                          value = value !== null && !isNaN(value) ? `${value}日` : '-';
-                     } else if (conf.format === 'daysOr9999') {
-                         value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-');
-                     }
-
-                    td.textContent = value !== undefined && value !== null ? String(value) : '-';
-                     if (conf.align === 'right') td.classList.add('text-right');
-                     if (conf.align === 'center') td.classList.add('text-center');
-
-                     // Apply specific cell styling
-                     if (conf.key === 'riskRank') {
-                         td.classList.add('font-bold');
-                         if (item.riskRank >= 8) td.classList.add('text-red-600');
-                         else if (item.riskRank >= 5) td.classList.add('text-yellow-600');
-                     }
-                     if (conf.key === 'remainingDays' && item.isExpired) {
-                         td.classList.add('text-red-600', 'font-bold');
-                     } else if (conf.key === 'remainingDays' && item.isExpirySoon) {
-                          td.classList.add('text-yellow-600');
-                      }
-                      if (conf.key === 'stagnantDays' && item.isStagnant) {
-                          td.classList.add('text-blue-600');
-                      }
-                      if (conf.key === 'stagnantDays' && item.isUnused) {
-                          td.classList.add('text-gray-500');
-                      }
-
-                    // No need to append td to tr, insertCell does this
-                });
-                 // No need to append tr to tbody, insertRow does this
-            });
-             console.log(`Rendered ${data.length} rows in report table.`);
-        }
-
+        function updateDashboardKPIs(data) { kpiArea.innerHTML = ''; if (!data || data.length === 0) return; const totalItems = data.length; const totalValue = data.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const highRiskItems = data.filter(item => item.riskRank >= 8); const highRiskCount = highRiskItems.length; const highRiskValue = highRiskItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const stagnantItems = data.filter(item => item.isStagnant); const stagnantCount = stagnantItems.length; const stagnantValue = stagnantItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const expirySoonItems = data.filter(item => item.isExpirySoon); const expirySoonCount = expirySoonItems.length; const expirySoonValue = expirySoonItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const unusedItems = data.filter(item => item.isUnused); const unusedCount = unusedItems.length; const unusedValue = unusedItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0); const kpis = [ { label: '総在庫品目数', value: totalItems.toLocaleString() }, { label: '総在庫金額(税別)', value: `¥${Math.round(totalValue).toLocaleString()}` }, { label: `要注意在庫 (${highRiskCount}品目)`, value: `¥${Math.round(highRiskValue).toLocaleString()}`, highlight: true }, { label: `滞留在庫 (${stagnantCount}品目)`, value: `¥${Math.round(stagnantValue).toLocaleString()}`, highlight: true }, { label: `期限切迫在庫 (${expirySoonCount}品目)`, value: `¥${Math.round(expirySoonValue).toLocaleString()}`, highlight: true }, { label: `未使用在庫 (${unusedCount}品目)`, value: `¥${Math.round(unusedValue).toLocaleString()}`, highlight: true }, ]; kpis.forEach(kpi => { const div = document.createElement('div'); div.className = `p-4 rounded-lg shadow ${kpi.highlight ? 'bg-red-100' : 'bg-blue-50'}`; div.innerHTML = `<dt class="text-sm font-medium text-gray-500 truncate">${kpi.label}</dt><dd class="mt-1 text-xl font-semibold ${kpi.highlight ? 'text-red-700' : 'text-blue-800'}">${kpi.value}</dd>`; kpiArea.appendChild(div); }); }
+
+        // --- Chart Rendering Functions ---
+        function destroyChart(instance) { if (instance) { instance.destroy(); } return null; }
+        function renderValueByRiskChart(data) { valueByRiskChartInstance = destroyChart(valueByRiskChartInstance); if (!valueByRiskChartCtx || !data || data.length === 0) return; const valueByRank = data.reduce((acc, item) => { const rank = item.riskRank || '不明'; const value = item['在庫金額(税別)'] || 0; acc[rank] = (acc[rank] || 0) + value; return acc; }, {}); const labels = Object.keys(valueByRank).sort((a, b) => a - b); const values = labels.map(label => Math.round(valueByRank[label])); const backgroundColors = labels.map(rank => { if (rank >= 9) return '#ef4444'; if (rank >= 7) return '#f97316'; if (rank >= 5) return '#eab308'; if (rank >= 3) return '#22c55e'; return '#3b82f6'; }); valueByRiskChartInstance = new Chart(valueByRiskChartCtx, { type: 'pie', data: { labels: labels.map(l => `ランク ${l}`), datasets: [{ label: '在庫金額(税別)', data: values, backgroundColor: backgroundColors, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: function(context) { let label = context.label || ''; if (label) label += ': '; if (context.parsed !== null) label += `¥${context.parsed.toLocaleString()}`; return label; } } } } } }); }
+        function renderCountByRiskChart(data) { countByRiskChartInstance = destroyChart(countByRiskChartInstance); if (!countByRiskChartCtx || !data || data.length === 0) return; const countByRank = data.reduce((acc, item) => { const rank = item.riskRank || '不明'; acc[rank] = (acc[rank] || 0) + 1; return acc; }, {}); const labels = Array.from({ length: 10 }, (_, i) => i + 1); const counts = labels.map(rank => countByRank[rank] || 0); const backgroundColors = labels.map(rank => { if (rank >= 9) return '#ef4444'; if (rank >= 7) return '#f97316'; if (rank >= 5) return '#eab308'; if (rank >= 3) return '#22c55e'; return '#3b82f6'; }); countByRiskChartInstance = new Chart(countByRiskChartCtx, { type: 'bar', data: { labels: labels.map(l => `ランク ${l}`), datasets: [{ label: '品目数', data: counts, backgroundColor: backgroundColors, borderColor: backgroundColors, borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '品目数' } } }, plugins: { legend: { display: false } } } }); }
+        function renderStatusChart(data) { statusChartInstance = destroyChart(statusChartInstance); if (!statusChartCtx || !data || data.length === 0) return; const statusCounts = { '要注意': data.filter(item => item.isHighRisk).length, '滞留': data.filter(item => item.isStagnant).length, '期限切迫': data.filter(item => item.isExpirySoon).length, '未使用': data.filter(item => item.isUnused).length, '正常他': data.filter(item => item.isNormal).length, }; const labels = Object.keys(statusCounts).filter(key => statusCounts[key] > 0); const counts = labels.map(label => statusCounts[label]); const statusColors = { '要注意': '#ef4444', '滞留': '#3b82f6', '期限切迫': '#f59e0b', '未使用': '#6b7280', '正常他': '#22c55e', }; const backgroundColors = labels.map(label => statusColors[label] || '#cccccc'); statusChartInstance = new Chart(statusChartCtx, { type: 'doughnut', data: { labels: labels, datasets: [{ label: '品目数', data: counts, backgroundColor: backgroundColors, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } }); }
+        function renderExpiryDistributionChart(data) { expiryDistributionChartInstance = destroyChart(expiryDistributionChartInstance); if (!expiryDistributionChartCtx || !data || data.length === 0) return; const bins = { '期限切れ (<0日)': 0, '0-30日': 0, '31-90日': 0, '91-180日': 0, '181-365日': 0, '365日超': 0, '不明': 0 }; data.forEach(item => { const days = item.remainingDays; if (days === null || days === undefined) bins['不明']++; else if (days < 0) bins['期限切れ (<0日)']++; else if (days <= 30) bins['0-30日']++; else if (days <= 90) bins['31-90日']++; else if (days <= 180) bins['91-180日']++; else if (days <= 365) bins['181-365日']++; else bins['365日超']++; }); const labels = Object.keys(bins); const counts = labels.map(label => bins[label]); const expiryColors = [ '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#3b82f6', '#6b7280' ]; expiryDistributionChartInstance = new Chart(expiryDistributionChartCtx, { type: 'bar', data: { labels: labels, datasets: [{ label: '品目数', data: counts, backgroundColor: expiryColors, borderColor: expiryColors, borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '品目数' } } }, plugins: { legend: { display: false } } } }); }
+        function renderAllCharts(data) { console.log("Rendering all charts..."); try { renderValueByRiskChart(data); renderCountByRiskChart(data); renderStatusChart(data); renderExpiryDistributionChart(data); console.log("Charts rendered."); } catch(error) { console.error("Error rendering charts:", error); messageArea.textContent = 'グラフの描画中にエラーが発生しました。'; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; } }
+
+        // --- End Chart Rendering Functions ---
+
+        // 在庫一覧テーブル更新 (変更なし)
+        function updateInventoryList() { console.log("Updating inventory list..."); if (!processedData) { console.warn("processedData not available."); return; } let filteredData = processedData.filter(item => { const categoryKey = '薬品種別'; if (inventoryFilterCategory && item[categoryKey] !== inventoryFilterCategory) return false; if (inventoryFilterRisk && String(item.riskRank) !== inventoryFilterRisk) return false; if (inventorySearchTerm) { const term = inventorySearchTerm.toLowerCase().trim(); if (term === '') return true; const name = String(item['薬品名称'] || '').toLowerCase(); const kana = String(item['フリガナ'] || '').toLowerCase(); const maker = String(item['メーカー'] || '').toLowerCase(); const code = String(item['薬品コード'] || '').toLowerCase(); if (!name.includes(term) && !kana.includes(term) && !maker.includes(term) && !code.includes(term)) return false; } return true; }); console.log(`Filtering complete. ${filteredData.length} items match filters.`); if (inventorySortColumn) { console.log(`Sorting by ${inventorySortColumn} (${inventorySortDirection})`); filteredData.sort((a, b) => { let valA = a[inventorySortColumn]; let valB = b[inventorySortColumn]; const direction = inventorySortDirection === 'asc' ? 1 : -1; if (valA instanceof Date && valB instanceof Date) return (valA.getTime() - valB.getTime()) * direction; if (valA instanceof Date) return -1 * direction; if (valB instanceof Date) return 1 * direction; if (typeof valA === 'number' && typeof valB === 'number') { if (isNaN(valA) && !isNaN(valB)) return -1 * direction; if (!isNaN(valA) && isNaN(valB)) return 1 * direction; if (isNaN(valA) && isNaN(valB)) return 0; return (valA - valB) * direction; } if (typeof valA === 'number') return -1 * direction; if (typeof valB === 'number') return 1 * direction; valA = String(valA || '').toLowerCase(); valB = String(valB || '').toLowerCase(); return valA.localeCompare(valB) * direction; }); } const totalFilteredItems = filteredData.length; let paginatedData = []; let totalPages = 1; if (inventoryPageSize === 'all') { paginatedData = filteredData; inventoryCurrentPage = 1; totalPages = 1; } else { const size = parseInt(inventoryPageSize, 10); totalPages = totalFilteredItems > 0 ? Math.ceil(totalFilteredItems / size) : 1; inventoryCurrentPage = Math.max(1, Math.min(inventoryCurrentPage, totalPages)); const startIndex = (inventoryCurrentPage - 1) * size; const endIndex = startIndex + size; paginatedData = filteredData.slice(startIndex, endIndex); } console.log(`Pagination complete. Page ${inventoryCurrentPage}/${totalPages}. Items: ${paginatedData.length}`); renderInventoryTable(paginatedData); renderInventoryPagination(totalFilteredItems, totalPages); const startItemNum = totalFilteredItems === 0 ? 0 : (inventoryCurrentPage - 1) * parseInt(inventoryPageSize === 'all' ? totalFilteredItems : inventoryPageSize, 10) + 1; const endItemNum = inventoryPageSize === 'all' ? totalFilteredItems : Math.min(startItemNum + parseInt(inventoryPageSize, 10) - 1, totalFilteredItems); if (totalFilteredItems > 0) inventoryListSummary.textContent = `全 ${processedData.length} 件中 ${totalFilteredItems} 件該当 (${startItemNum}-${endItemNum}件目)`; else inventoryListSummary.textContent = `全 ${processedData.length} 件中 該当なし`; }
+        // 在庫一覧テーブルヘッダー定義 (変更なし)
+        const inventoryTableHeadersConfig = [ { key: '薬品コード', label: 'コード', sortable: true }, { key: '薬品名称', label: '薬品名称', sortable: true }, { key: 'フリガナ', label: 'フリガナ', sortable: true }, { key: 'メーカー', label: 'メーカー', sortable: true }, { key: '薬品種別', label: '種別', sortable: true }, { key: '在庫数量', label: '数量', sortable: true, align: 'right', format: 'number' }, { key: '単位', label: '単位', sortable: false }, { key: '在庫金額(税別)', label: '金額(税別)', sortable: true, align: 'right', format: 'currency' }, { key: 'formattedExpiryDate', label: '有効期限', sortable: true, originalSortKey: 'expiryDate' }, { key: 'remainingDays', label: '残り日数', sortable: true, align: 'right', format: 'days' }, { key: 'formattedLastOutDate', label: '最終出庫', sortable: true, originalSortKey: 'lastOutDate' }, { key: 'stagnantDays', label: '滞留日数', sortable: true, align: 'right', format: 'daysOr9999' }, { key: 'riskRank', label: '危険度', sortable: true, align: 'center' }, { key: 'formattedLastInDate', label: '最終入庫', sortable: true, originalSortKey: 'lastInDate'}, ];
+        // 在庫一覧テーブルヘッダー生成 (変更なし)
+        function renderInventoryTableHeader() { inventoryTableHeader.innerHTML = ''; inventoryTableHeadersConfig.forEach(headerInfo => { const th = document.createElement('th'); th.scope = 'col'; th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${headerInfo.align === 'right' ? 'text-right' : (headerInfo.align === 'center' ? 'text-center' : '')}`; th.textContent = headerInfo.label; if (headerInfo.sortable) { th.style.cursor = 'pointer'; const sortKey = headerInfo.originalSortKey || headerInfo.key; th.addEventListener('click', () => handleInventorySort(sortKey)); if (sortKey === inventorySortColumn) th.innerHTML += inventorySortDirection === 'asc' ? ' <span class="text-blue-500">&uarr;</span>' : ' <span class="text-blue-500">&darr;</span>'; } inventoryTableHeader.appendChild(th); }); }
+        // 在庫一覧テーブルボディ描画 (変更なし)
+        function renderInventoryTable(data) { inventoryTableBody.innerHTML = ''; if (data.length === 0) { inventoryTableBody.innerHTML = `<tr><td colspan="${inventoryTableHeadersConfig.length}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">表示するデータがありません</td></tr>`; return; } data.forEach(item => { const tr = document.createElement('tr'); let rowClass = ''; if (item.riskRank >= 8) rowClass = 'row-danger-high'; else if (item.isExpired) rowClass = 'row-danger-high'; else if (item.isExpirySoon) rowClass = 'row-warning-expiry'; else if (item.isStagnant) rowClass = 'row-warning-stagnant'; else if (item.isUnused) rowClass = 'row-unused'; tr.className = rowClass; inventoryTableHeadersConfig.forEach(headerInfo => { const td = document.createElement('td'); td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800'; let value = item[headerInfo.key]; if (headerInfo.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`; else if (headerInfo.format === 'number') value = (value || 0).toLocaleString(); else if (headerInfo.format === 'days') value = value !== null && !isNaN(value) ? `${value}日` : '-'; else if (headerInfo.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-'); td.textContent = value !== undefined && value !== null ? String(value) : '-'; if (headerInfo.align === 'right') td.classList.add('text-right'); if (headerInfo.align === 'center') td.classList.add('text-center'); if (headerInfo.key === 'riskRank') { td.classList.add('font-bold'); if (item.riskRank >= 8) td.classList.add('text-red-600'); else if (item.riskRank >= 5) td.classList.add('text-yellow-600'); } if (headerInfo.key === 'remainingDays' && item.isExpired) td.classList.add('text-red-600', 'font-bold'); else if (headerInfo.key === 'remainingDays' && item.isExpirySoon) td.classList.add('text-yellow-600'); if (headerInfo.key === 'stagnantDays' && item.isStagnant) td.classList.add('text-blue-600'); if (headerInfo.key === 'stagnantDays' && item.isUnused) td.classList.add('text-gray-500'); tr.appendChild(td); }); inventoryTableBody.appendChild(tr); }); }
+        // 在庫一覧フィルタオプション更新 (変更なし)
+        function updateInventoryFilterOptions() { if (!processedData) return; console.log("Updating filter options..."); const categoryKey = '薬品種別'; try { const categories = [...new Set(processedData.map(item => item[categoryKey]).filter(Boolean))].sort(); filterCategoryEl.innerHTML = '<option value="">すべて</option>'; categories.forEach(cat => { const option = document.createElement('option'); option.value = cat; option.textContent = cat; filterCategoryEl.appendChild(option); }); filterCategoryEl.value = inventoryFilterCategory; } catch (e) { console.error("Error updating category filter:", e); filterCategoryEl.innerHTML = '<option value="">エラー</option>'; } try { const risks = [...new Set(processedData.map(item => item.riskRank).filter(r => r !== null && r !== undefined))].sort((a, b) => a - b); filterRiskEl.innerHTML = '<option value="">すべて</option>'; risks.forEach(rank => { const option = document.createElement('option'); option.value = String(rank); option.textContent = `ランク ${rank}`; filterRiskEl.appendChild(option); }); filterRiskEl.value = inventoryFilterRisk; } catch (e) { console.error("Error updating risk filter:", e); filterRiskEl.innerHTML = '<option value="">エラー</option>'; } console.log("Filter options updated."); }
+        // 在庫一覧ページネーション描画 (変更なし)
+        function renderInventoryPagination(totalItems, totalPages) { inventoryPagination.innerHTML = ''; if (totalPages <= 1) return; const createButton = (text, page, isDisabled = false, isActive = false) => { const button = document.createElement('button'); button.innerHTML = text; button.disabled = isDisabled; button.className = `px-3 py-1 text-sm border rounded-md ${ isActive ? 'bg-blue-500 text-white border-blue-500 cursor-default' : isDisabled ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-blue-600 border-gray-300 hover:bg-gray-100' }`; if (!isDisabled && !isActive) { button.onclick = () => { inventoryCurrentPage = page; updateInventoryList(); }; } return button; }; inventoryPagination.appendChild(createButton('&laquo; 前へ', inventoryCurrentPage - 1, inventoryCurrentPage === 1)); const maxPagesToShow = 3; const pages = []; pages.push(createButton('1', 1, false, inventoryCurrentPage === 1)); if (inventoryCurrentPage > maxPagesToShow + 1) { const span = document.createElement('span'); span.textContent = '...'; span.className = 'px-2 py-1 text-sm text-gray-500'; pages.push(span); } const startPage = Math.max(2, inventoryCurrentPage - Math.floor((maxPagesToShow -1) / 2)); const endPage = Math.min(totalPages - 1, inventoryCurrentPage + Math.floor(maxPagesToShow / 2)); for (let i = startPage; i <= endPage; i++) { pages.push(createButton(String(i), i, false, i === inventoryCurrentPage)); } if (inventoryCurrentPage < totalPages - maxPagesToShow) { const span = document.createElement('span'); span.textContent = '...'; span.className = 'px-2 py-1 text-sm text-gray-500'; pages.push(span); } if (totalPages > 1) { pages.push(createButton(String(totalPages), totalPages, false, inventoryCurrentPage === totalPages)); } pages.forEach(p => inventoryPagination.appendChild(p)); inventoryPagination.appendChild(createButton('次へ &raquo;', inventoryCurrentPage + 1, inventoryCurrentPage === totalPages)); }
+        // 分析レポートテーブル更新 (変更なし)
+        function updateAnalysisReport() { console.log(`Updating analysis report for tab: ${reportCurrentTab}`); if (!processedData) { console.warn("processedData not available."); return; } let reportData = []; let sortKey = ''; let sortDirection = 'desc'; let displayHeadersConfig = []; const baseHeaders = [ { key: '薬品コード', label: 'コード' }, { key: '薬品名称', label: '薬品名称' }, { key: 'メーカー', label: 'メーカー' }, ]; const reportConfigs = { 'amountWorst': { sortKey: '在庫金額(税別)', sortDirection: 'desc', filter: item => true, headers: [ ...baseHeaders, { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' }, { key: '在庫数量', label: '数量', format: 'number', align: 'right' }, ] }, 'stagnantWorst': { sortKey: 'stagnantDays', sortDirection: 'desc', filter: item => !item.isUnused && item.stagnantDays !== null, headers: [ ...baseHeaders, { key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' }, { key: 'formattedLastOutDate', label: '最終出庫' }, ] }, 'expirySoon': { sortKey: 'remainingDays', sortDirection: 'asc', filter: item => item.remainingDays !== null && item.remainingDays >= 0, headers: [ ...baseHeaders, { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' }, { key: 'formattedExpiryDate', label: '有効期限' }, ] }, 'riskWorst': { sortKey: 'riskRank', sortDirection: 'desc', filter: item => true, headers: [ ...baseHeaders, { key: 'riskRank', label: '危険度ランク', align: 'center' }, { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' }, { key: 'stagnantDays', label: '滞留日数', format: 'daysOr9999', align: 'right' }, ] }, 'unused': { sortKey: 'lastInDate', sortDirection: 'asc', filter: item => item.isUnused, headers: [ ...baseHeaders, { key: 'formattedLastInDate', label: '最終入庫日' }, { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' }, ] } }; const currentConfig = reportConfigs[reportCurrentTab]; if (!currentConfig) { console.error(`Invalid report tab: ${reportCurrentTab}`); renderReportTable([], baseHeaders); return; } sortKey = currentConfig.sortKey; sortDirection = currentConfig.sortDirection; displayHeadersConfig = currentConfig.headers; reportData = processedData.filter(currentConfig.filter); console.log(`Filtered report data (${reportCurrentTab}): ${reportData.length} items`); reportData.sort((a, b) => { let valA = a[sortKey]; let valB = b[sortKey]; const direction = sortDirection === 'asc' ? 1 : -1; if (valA instanceof Date && valB instanceof Date) return (valA.getTime() - valB.getTime()) * direction; if (valA instanceof Date) return -1 * direction; if (valB instanceof Date) return 1 * direction; if (sortKey === 'stagnantDays') { if (valA === 9999 && valB !== 9999) return -1 * direction; if (valB === 9999 && valA !== 9999) return 1 * direction; if (valA === 9999 && valB === 9999) return 0; } if (typeof valA === 'number' && typeof valB === 'number') { if (isNaN(valA) && !isNaN(valB)) return -1 * direction; if (!isNaN(valA) && isNaN(valB)) return 1 * direction; if (isNaN(valA) && isNaN(valB)) return 0; return (valA - valB) * direction; } if (typeof valA === 'number') return -1 * direction; if (typeof valB === 'number') return 1 * direction; valA = String(valA || '').toLowerCase(); valB = String(valB || '').toLowerCase(); return valA.localeCompare(valB) * direction; }); console.log(`Sorted report data.`); let startIndex = 0; if (reportExcludeTop3) { startIndex = 3; reportData = reportData.slice(startIndex); console.log(`Excluded top 3. ${reportData.length} items remain.`); } const count = reportCount === 'all' ? reportData.length : parseInt(reportCount, 10); const finalReportData = reportData.slice(0, count); console.log(`Limited to ${count} items. Final count: ${finalReportData.length}`); renderReportTable(finalReportData, displayHeadersConfig, startIndex); }
+        // 分析レポートテーブル描画 (変更なし)
+        function renderReportTable(data, headersConfig, startIndex = 0) { reportTableHeader.innerHTML = ''; const headerRow = reportTableHeader; const thNum = document.createElement('th'); thNum.scope = 'col'; thNum.className = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'; thNum.textContent = '#'; headerRow.appendChild(thNum); headersConfig.forEach(conf => { const th = document.createElement('th'); th.scope = 'col'; th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${conf.align === 'right' ? 'text-right' : (conf.align === 'center' ? 'text-center' : '')}`; th.textContent = conf.label; headerRow.appendChild(th); }); reportTableBody.innerHTML = ''; if (data.length === 0) { reportTableBody.innerHTML = `<tr><td colspan="${headersConfig.length + 1}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">表示するデータがありません</td></tr>`; return; } data.forEach((item, index) => { const tr = reportTableBody.insertRow(); let rowClass = ''; if (item.riskRank >= 8) rowClass = 'row-danger-high'; else if (item.isExpired) rowClass = 'row-danger-high'; else if (item.isExpirySoon) rowClass = 'row-warning-expiry'; else if (item.isStagnant) rowClass = 'row-warning-stagnant'; else if (item.isUnused) rowClass = 'row-unused'; tr.className = rowClass; const tdNum = tr.insertCell(); tdNum.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800 text-center'; tdNum.textContent = index + 1 + startIndex; headersConfig.forEach(conf => { const td = tr.insertCell(); td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800'; let value = item[conf.key]; if (conf.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`; else if (conf.format === 'number') value = (value || 0).toLocaleString(); else if (conf.format === 'days') value = value !== null && !isNaN(value) ? `${value}日` : '-'; else if (conf.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-'); td.textContent = value !== undefined && value !== null ? String(value) : '-'; if (conf.align === 'right') td.classList.add('text-right'); if (conf.align === 'center') td.classList.add('text-center'); if (conf.key === 'riskRank') { td.classList.add('font-bold'); if (item.riskRank >= 8) td.classList.add('text-red-600'); else if (item.riskRank >= 5) td.classList.add('text-yellow-600'); } if (conf.key === 'remainingDays' && item.isExpired) td.classList.add('text-red-600', 'font-bold'); else if (conf.key === 'remainingDays' && item.isExpirySoon) td.classList.add('text-yellow-600'); if (conf.key === 'stagnantDays' && item.isStagnant) td.classList.add('text-blue-600'); if (conf.key === 'stagnantDays' && item.isUnused) td.classList.add('text-gray-500'); }); }); console.log(`Rendered ${data.length} rows in report table.`); }
 
         // --- イベントハンドラ ---
-
-        // データ読み込み＆分析実行ボタン
-        function handleProcessData() {
-            console.log("Process button clicked.");
-            messageArea.textContent = '処理中...'; // Indicate processing
-            messageArea.className = 'mt-4 text-center text-gray-600 font-medium h-6';
-            // Disable buttons during processing
-            processButton.disabled = true;
-            recalculateButton.disabled = true;
-
-            // Use setTimeout to allow the UI to update before heavy processing
-            setTimeout(() => {
-                const tsvData = inventoryDataEl.value;
-                if (!tsvData) {
-                    messageArea.textContent = '在庫データを入力してください。';
-                    messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6';
-                    processButton.disabled = false; // Re-enable button
-                    return;
-                }
-
-                try {
-                    console.time("Data Processing"); // Start timer
-                    const parsed = parseTSV(tsvData);
-                    headers = parsed.headers;
-                    rawData = parsed.data;
-
-                    // 必須列チェック
-                    const missingCols = validateHeaders(headers);
-                    if (missingCols.length > 0) {
-                        throw new Error(`必須列が見つかりません: ${missingCols.join(', ')}`);
-                    }
-
-                    // 設定を読み込み (念のため最新化)
-                    updateSettings();
-                    // 設定変更メッセージをクリア
-                    if (messageArea.textContent.includes('設定が変更されました')) {
-                         messageArea.textContent = '';
-                    }
-
-
-                    // データ処理実行
-                    processedData = processInventoryData(rawData, headers);
-
-                    // フィルタオプション更新
-                    updateInventoryFilterOptions();
-
-                    // UI更新
-                    updateDashboardKPIs(processedData);
-                    updateDashboardWatchlists(processedData);
-                    renderInventoryTableHeader(); // ヘッダー生成
-                    // Reset inventory list state before updating
-                    inventoryCurrentPage = 1;
-                    inventorySortColumn = null;
-                    inventoryFilterCategory = '';
-                    inventoryFilterRisk = '';
-                    inventorySearchTerm = '';
-                    searchInventoryEl.value = ''; // Clear search input
-                    filterCategoryEl.value = '';
-                    filterRiskEl.value = '';
-                    updateInventoryList(); // 在庫一覧更新 (フィルタ/ソート/ページネーション含む)
-
-                    // Reset report state before updating
-                    reportCurrentTab = 'amountWorst'; // Default tab
-                     reportCount = reportCountEl.value; // Keep selected count
-                     reportExcludeTop3 = excludeTop3El.checked; // Keep selected checkbox
-                     // Update tab UI to reflect default
-                     reportTabs.forEach(tab => {
-                         tab.classList.remove('active-tab', 'border-blue-500', 'text-blue-600');
-                         tab.classList.add('border-transparent', 'text-gray-500');
-                         if (tab.dataset.tab === reportCurrentTab) {
-                             tab.classList.add('active-tab', 'border-blue-500', 'text-blue-600');
-                             tab.classList.remove('border-transparent', 'text-gray-500');
-                         }
-                     });
-                    updateAnalysisReport(); // 分析レポート更新
-
-                    // セクション表示
-                    dashboardSection.classList.remove('hidden');
-                    inventoryListSection.classList.remove('hidden');
-                    analysisReportSection.classList.remove('hidden');
-                    printButtonContainer.classList.remove('hidden');
-
-                    messageArea.textContent = `データ ${rawData.length} 件を読み込み、${processedData.length} 件を分析しました。`;
-                    messageArea.className = 'mt-4 text-center text-green-600 font-medium h-6';
-                    console.timeEnd("Data Processing"); // End timer
-
-                } catch (error) {
-                    console.error("Error processing data:", error);
-                    messageArea.textContent = `エラー: ${error.message}`;
-                    messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6';
-                    // エラー発生時は分析結果セクションを隠す
-                    dashboardSection.classList.add('hidden');
-                    inventoryListSection.classList.add('hidden');
-                    analysisReportSection.classList.add('hidden');
-                    printButtonContainer.classList.add('hidden');
-                } finally {
-                     // Re-enable buttons
-                     processButton.disabled = false;
-                     // Enable recalculate only if data was successfully processed at least once
-                     recalculateButton.disabled = !(processedData && processedData.length > 0);
-                }
-            }, 10); // Short delay (10ms)
-        }
-
-
-        // 再計算ボタン
-        function handleRecalculate() {
-             console.log("Recalculate button clicked.");
-             if (rawData.length === 0) {
-                 messageArea.textContent = '先にデータを読み込んでください。';
-                 messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6';
-                 return;
-             }
-             messageArea.textContent = '再計算中...';
-             messageArea.className = 'mt-4 text-center text-gray-600 font-medium h-6';
-             // Disable buttons
-             processButton.disabled = true;
-             recalculateButton.disabled = true;
-
-
-             setTimeout(() => {
-                 try {
-                     console.time("Data Recalculation");
-                     // 設定を読み込み (最新の設定値を取得)
-                     updateSettings();
-                      // 設定変更メッセージをクリア
-                     if (messageArea.textContent.includes('設定が変更されました')) {
-                          messageArea.textContent = '';
-                     }
-
-                     // データ再処理実行
-                     processedData = processInventoryData(rawData, headers); // rawDataは保持されている前提
-
-                     // フィルタオプション更新 (設定変更で内容が変わる可能性があるため)
-                     updateInventoryFilterOptions();
-
-                     // UI更新
-                     updateDashboardKPIs(processedData);
-                     updateDashboardWatchlists(processedData);
-                     // 在庫一覧と分析レポートも現在のフィルタ/ソート/ページ設定で更新
-                     updateInventoryList();
-                     updateAnalysisReport();
-
-                     messageArea.textContent = '再計算が完了しました。';
-                     messageArea.className = 'mt-4 text-center text-green-600 font-medium h-6';
-                     console.timeEnd("Data Recalculation");
-
-                 } catch (error) {
-                     console.error("Error recalculating data:", error);
-                     messageArea.textContent = `再計算エラー: ${error.message}`;
-                     messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6';
-                 } finally {
-                     // Re-enable buttons
-                     processButton.disabled = false;
-                     recalculateButton.disabled = false; // Re-enable recalculate
-                 }
-             }, 10);
-        }
-
-
-        // 在庫一覧: フィルタ・検索変更
-        function handleInventoryFilterChange() {
-            inventorySearchTerm = searchInventoryEl.value;
-            inventoryFilterCategory = filterCategoryEl.value;
-            inventoryFilterRisk = filterRiskEl.value;
-            inventoryCurrentPage = 1; // フィルタ変更時は1ページ目に戻る
-            updateInventoryList();
-        }
-
-        // 在庫一覧: 表示件数変更
-        function handleInventoryPageSizeChange() {
-            inventoryPageSize = inventoryPageSizeEl.value;
-            inventoryCurrentPage = 1; // 表示件数変更時は1ページ目に戻る
-            updateInventoryList();
-        }
-
-        // 在庫一覧: ソート実行
-        function handleInventorySort(columnKey) {
-            if (inventorySortColumn === columnKey) {
-                // 同じ列をクリックしたら昇順/降順を切り替え
-                inventorySortDirection = inventorySortDirection === 'asc' ? 'desc' : 'asc';
-            } else {
-                // 新しい列をクリックしたら昇順でソート
-                inventorySortColumn = columnKey;
-                inventorySortDirection = 'asc';
-            }
-             renderInventoryTableHeader(); // ソートアイコン更新のためにヘッダー再描画
-            updateInventoryList();
-        }
-
-
-        // 分析レポート: タブ切り替え
-        function handleReportTabChange(event) {
-            reportTabs.forEach(tab => {
-                 tab.classList.remove('active-tab', 'border-blue-500', 'text-blue-600');
-                 tab.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-            });
-
-            const selectedTab = event.currentTarget; // Use currentTarget for the button clicked
-            selectedTab.classList.add('active-tab', 'border-blue-500', 'text-blue-600');
-            selectedTab.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-
-            reportCurrentTab = selectedTab.dataset.tab;
-            updateAnalysisReport();
-        }
-
-        // 分析レポート: 表示オプション変更
-        function handleReportOptionsChange() {
-            reportCount = reportCountEl.value;
-            reportExcludeTop3 = excludeTop3El.checked;
-            updateAnalysisReport();
-        }
-
-        // レポート印刷ボタン
-        function handlePrintReport() {
-             console.log("Print report button clicked.");
-             if (!processedData || processedData.length === 0) {
-                 messageArea.textContent = '印刷するデータがありません。先にデータを読み込んでください。';
-                 messageArea.className = 'mt-4 text-center text-orange-600 font-medium h-6';
-                 return;
-             }
-
-            try {
-                // 印刷用セクションに必要なデータを設定
-                document.getElementById('print-analysis-date').textContent = analysisDate.toLocaleDateString('ja-JP');
-                document.getElementById('print-stagnant-days').textContent = stagnantThreshold;
-
-                // KPI (簡易コピー)
-                const printKpiArea = document.getElementById('print-kpi');
-                printKpiArea.innerHTML = ''; // Clear previous
-                kpiArea.querySelectorAll('div').forEach(kpiDiv => {
-                    printKpiArea.appendChild(kpiDiv.cloneNode(true));
-                });
-
-                // 各リストの生成 (要件に合わせて上位N件などを取得)
-                const printLimit = 50; // 印刷する最大件数 (例)
-                const printHeadersBase = [ // 印刷する基本列
-                    { key: '薬品コード', label: 'コード' },
-                    { key: '薬品名称', label: '薬品名称' },
-                    { key: 'メーカー', label: 'メーカー' },
-                    { key: '在庫数量', label: '数量', format: 'number', align: 'right' },
-                    { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
-                ];
-
-                const generatePrintTable = (data, headerElId, bodyElId, specificHeaders = []) => {
-                    const headerEl = document.getElementById(headerElId);
-                    const bodyEl = document.getElementById(bodyElId);
-                    if (!headerEl || !bodyEl) {
-                         console.error(`Print table elements not found: ${headerElId}, ${bodyElId}`);
-                         return;
-                    }
-                    headerEl.innerHTML = ''; // Clear the thead content
-                    bodyEl.innerHTML = '';   // Clear the tbody content
-
-                    const headersToPrint = [...printHeadersBase, ...specificHeaders];
-
-                    // ヘッダー行 (thead内にtrを作成)
-                    const hr = headerEl.insertRow();
-                    headersToPrint.forEach(conf => {
-                        const th = document.createElement('th');
-                        th.textContent = conf.label;
-                        th.className = `px-2 py-1 border border-gray-400 text-xs ${conf.align === 'right' ? 'text-right' : ''} bg-gray-200`; // Added bg
-                        hr.appendChild(th);
-                    });
-
-                    // データ行 (tbody内にtrを作成)
-                    data.slice(0, printLimit).forEach(item => {
-                        const tr = bodyEl.insertRow();
-                         // Apply conditional formatting class for border in print
-                         let rowClass = '';
-                         if (item.riskRank >= 8) rowClass = 'row-danger-high';
-                         else if (item.isExpired) rowClass = 'row-danger-high';
-                         else if (item.isExpirySoon) rowClass = 'row-warning-expiry';
-                         else if (item.isStagnant) rowClass = 'row-warning-stagnant';
-                         else if (item.isUnused) rowClass = 'row-unused';
-                         tr.className = rowClass; // Apply class to TR for print CSS
-
-                        headersToPrint.forEach(conf => {
-                            const td = tr.insertCell();
-                            let value = item[conf.key];
-                            // フォーマット適用
-                            if (conf.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`;
-                            else if (conf.format === 'number') value = (value || 0).toLocaleString();
-                            else if (conf.format === 'days') value = value !== null && !isNaN(value) ? `${value}日` : '-';
-                            else if (conf.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-');
-
-                            td.textContent = value !== undefined && value !== null ? String(value) : '-';
-                            td.className = `px-2 py-1 border border-gray-400 text-xs ${conf.align === 'right' ? 'text-right' : ''}`;
-                        });
-                    });
-                    if (data.length === 0) {
-                        const tr = bodyEl.insertRow();
-                        const td = tr.insertCell();
-                        td.colSpan = headersToPrint.length;
-                        td.textContent = '該当なし';
-                        td.className = 'px-2 py-1 border border-gray-400 text-xs text-center text-gray-500';
-                    }
-                };
-
-                // 危険度高リスト (ランク8以上)
-                const highRiskData = processedData.filter(item => item.riskRank >= 8).sort((a,b) => b.riskRank - a.riskRank);
-                generatePrintTable(highRiskData, 'print-risk-header', 'print-risk-body', [
-                    { key: 'riskRank', label: '危険度', align: 'center' }
-                ]);
-
-                // 滞留在庫リスト
-                const stagnantData = processedData.filter(item => item.isStagnant).sort((a,b) => (b.stagnantDays || 0) - (a.stagnantDays || 0));
-                generatePrintTable(stagnantData, 'print-stagnant-header', 'print-stagnant-body', [
-                    { key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' },
-                    { key: 'formattedLastOutDate', label: '最終出庫'}
-                ]);
-
-                // 未使用在庫リスト
-                const unusedData = processedData.filter(item => item.isUnused).sort((a, b) => (a.lastInDate ? a.lastInDate.getTime() : 0) - (b.lastInDate ? b.lastInDate.getTime() : 0)); // 最終入庫古い順
-                generatePrintTable(unusedData, 'print-unused-header', 'print-unused-body', [
-                    { key: 'formattedLastInDate', label: '最終入庫'}
-                ]);
-
-                // 期限切迫リスト
-                const expirySoonData = processedData.filter(item => item.isExpirySoon).sort((a,b) => (a.remainingDays === null ? Infinity : a.remainingDays) - (b.remainingDays === null ? Infinity : b.remainingDays));
-                generatePrintTable(expirySoonData, 'print-expiry-header', 'print-expiry-body', [
-                    { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
-                    { key: 'formattedExpiryDate', label: '有効期限'}
-                ]);
-
-
-                // 印刷ダイアログ表示
-                printSection.classList.remove('hidden'); // 印刷セクションを表示
-                window.print(); // ブラウザの印刷機能を呼び出す
-                printSection.classList.add('hidden'); // 印刷後は非表示に戻す
-
-            } catch (error) {
-                 console.error("Error preparing print report:", error);
-                 messageArea.textContent = '印刷用レポートの生成中にエラーが発生しました。';
-                 messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6';
-                 // Ensure print section is hidden on error
-                 printSection.classList.add('hidden');
-            }
-        }
-
+        function handleProcessData() { console.log("Process button clicked."); messageArea.textContent = '処理中...'; messageArea.className = 'mt-4 text-center text-gray-600 font-medium h-6'; processButton.disabled = true; recalculateButton.disabled = true; setTimeout(() => { const tsvData = inventoryDataEl.value; if (!tsvData) { messageArea.textContent = '在庫データを入力してください。'; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; processButton.disabled = false; return; } try { console.time("Data Processing"); const parsed = parseTSV(tsvData); headers = parsed.headers; rawData = parsed.data; const missingCols = validateHeaders(headers); if (missingCols.length > 0) throw new Error(`必須列が見つかりません: ${missingCols.join(', ')}`); updateSettings(); if (messageArea.textContent.includes('設定が変更されました')) messageArea.textContent = ''; processedData = processInventoryData(rawData, headers); updateInventoryFilterOptions(); updateDashboardKPIs(processedData); renderAllCharts(processedData); renderInventoryTableHeader(); inventoryCurrentPage = 1; inventorySortColumn = null; inventoryFilterCategory = ''; inventoryFilterRisk = ''; inventorySearchTerm = ''; searchInventoryEl.value = ''; filterCategoryEl.value = ''; filterRiskEl.value = ''; updateInventoryList(); reportCurrentTab = 'amountWorst'; reportCount = reportCountEl.value; reportExcludeTop3 = excludeTop3El.checked; reportTabs.forEach(tab => { tab.classList.remove('active-tab', 'border-blue-500', 'text-blue-600'); tab.classList.add('border-transparent', 'text-gray-500'); if (tab.dataset.tab === reportCurrentTab) { tab.classList.add('active-tab', 'border-blue-500', 'text-blue-600'); tab.classList.remove('border-transparent', 'text-gray-500'); } }); updateAnalysisReport(); dashboardSection.classList.remove('hidden'); inventoryListSection.classList.remove('hidden'); analysisReportSection.classList.remove('hidden'); printButtonContainer.classList.remove('hidden'); messageArea.textContent = `データ ${rawData.length} 件を読み込み、${processedData.length} 件を分析しました。`; messageArea.className = 'mt-4 text-center text-green-600 font-medium h-6'; console.timeEnd("Data Processing"); } catch (error) { console.error("Error processing data:", error); messageArea.textContent = `エラー: ${error.message}`; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; dashboardSection.classList.add('hidden'); inventoryListSection.classList.add('hidden'); analysisReportSection.classList.add('hidden'); printButtonContainer.classList.add('hidden'); } finally { processButton.disabled = false; recalculateButton.disabled = !(processedData && processedData.length > 0); } }, 10); }
+        function handleRecalculate() { console.log("Recalculate button clicked."); if (rawData.length === 0) { messageArea.textContent = '先にデータを読み込んでください。'; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; return; } messageArea.textContent = '再計算中...'; messageArea.className = 'mt-4 text-center text-gray-600 font-medium h-6'; processButton.disabled = true; recalculateButton.disabled = true; setTimeout(() => { try { console.time("Data Recalculation"); updateSettings(); if (messageArea.textContent.includes('設定が変更されました')) messageArea.textContent = ''; processedData = processInventoryData(rawData, headers); updateInventoryFilterOptions(); updateDashboardKPIs(processedData); renderAllCharts(processedData); updateInventoryList(); updateAnalysisReport(); messageArea.textContent = '再計算が完了しました。'; messageArea.className = 'mt-4 text-center text-green-600 font-medium h-6'; console.timeEnd("Data Recalculation"); } catch (error) { console.error("Error recalculating data:", error); messageArea.textContent = `再計算エラー: ${error.message}`; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; } finally { processButton.disabled = false; recalculateButton.disabled = false; } }, 10); }
+        function handleInventoryFilterChange() { inventorySearchTerm = searchInventoryEl.value; inventoryFilterCategory = filterCategoryEl.value; inventoryFilterRisk = filterRiskEl.value; inventoryCurrentPage = 1; updateInventoryList(); }
+        function handleInventoryPageSizeChange() { inventoryPageSize = inventoryPageSizeEl.value; inventoryCurrentPage = 1; updateInventoryList(); }
+        function handleInventorySort(columnKey) { if (inventorySortColumn === columnKey) inventorySortDirection = inventorySortDirection === 'asc' ? 'desc' : 'asc'; else { inventorySortColumn = columnKey; inventorySortDirection = 'asc'; } renderInventoryTableHeader(); updateInventoryList(); }
+        function handleReportTabChange(event) { reportTabs.forEach(tab => { tab.classList.remove('active-tab', 'border-blue-500', 'text-blue-600'); tab.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300'); }); const selectedTab = event.currentTarget; selectedTab.classList.add('active-tab', 'border-blue-500', 'text-blue-600'); selectedTab.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300'); reportCurrentTab = selectedTab.dataset.tab; updateAnalysisReport(); }
+        function handleReportOptionsChange() { reportCount = reportCountEl.value; reportExcludeTop3 = excludeTop3El.checked; updateAnalysisReport(); }
+        function handlePrintReport() { console.log("Print report button clicked."); if (!processedData || processedData.length === 0) { messageArea.textContent = '印刷するデータがありません。'; messageArea.className = 'mt-4 text-center text-orange-600 font-medium h-6'; return; } try { document.getElementById('print-analysis-date').textContent = analysisDate.toLocaleDateString('ja-JP'); document.getElementById('print-stagnant-days').textContent = stagnantThreshold; const printKpiArea = document.getElementById('print-kpi'); printKpiArea.innerHTML = ''; kpiArea.querySelectorAll('div').forEach(kpiDiv => printKpiArea.appendChild(kpiDiv.cloneNode(true))); const printLimit = 50; const printHeadersBase = [ { key: '薬品コード', label: 'コード' }, { key: '薬品名称', label: '薬品名称' }, { key: 'メーカー', label: 'メーカー' }, { key: '在庫数量', label: '数量', format: 'number', align: 'right' }, { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' }, ]; const generatePrintTable = (data, headerElId, bodyElId, specificHeaders = []) => { const headerEl = document.getElementById(headerElId); const bodyEl = document.getElementById(bodyElId); if (!headerEl || !bodyEl) { console.error(`Print elements not found: ${headerElId}, ${bodyElId}`); return; } headerEl.innerHTML = ''; bodyEl.innerHTML = ''; const headersToPrint = [...printHeadersBase, ...specificHeaders]; const hr = headerEl.insertRow(); headersToPrint.forEach(conf => { const th = document.createElement('th'); th.textContent = conf.label; th.className = `px-2 py-1 border border-gray-400 text-xs ${conf.align === 'right' ? 'text-right' : ''} bg-gray-200`; hr.appendChild(th); }); data.slice(0, printLimit).forEach(item => { const tr = bodyEl.insertRow(); let rowClass = ''; if (item.riskRank >= 8) rowClass = 'row-danger-high'; else if (item.isExpired) rowClass = 'row-danger-high'; else if (item.isExpirySoon) rowClass = 'row-warning-expiry'; else if (item.isStagnant) rowClass = 'row-warning-stagnant'; else if (item.isUnused) rowClass = 'row-unused'; tr.className = rowClass; headersToPrint.forEach(conf => { const td = tr.insertCell(); let value = item[conf.key]; if (conf.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`; else if (conf.format === 'number') value = (value || 0).toLocaleString(); else if (conf.format === 'days') value = value !== null && !isNaN(value) ? `${value}日` : '-'; else if (conf.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null && !isNaN(value) ? `${value}日` : '-'); td.textContent = value !== undefined && value !== null ? String(value) : '-'; td.className = `px-2 py-1 border border-gray-400 text-xs ${conf.align === 'right' ? 'text-right' : ''}`; }); }); if (data.length === 0) { const tr = bodyEl.insertRow(); const td = tr.insertCell(); td.colSpan = headersToPrint.length; td.textContent = '該当なし'; td.className = 'px-2 py-1 border border-gray-400 text-xs text-center text-gray-500'; } }; const highRiskData = processedData.filter(item => item.riskRank >= 8).sort((a,b) => b.riskRank - a.riskRank); generatePrintTable(highRiskData, 'print-risk-header', 'print-risk-body', [{ key: 'riskRank', label: '危険度', align: 'center' }]); const stagnantData = processedData.filter(item => item.isStagnant).sort((a,b) => (b.stagnantDays || 0) - (a.stagnantDays || 0)); generatePrintTable(stagnantData, 'print-stagnant-header', 'print-stagnant-body', [{ key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' }, { key: 'formattedLastOutDate', label: '最終出庫'}]); const unusedData = processedData.filter(item => item.isUnused).sort((a, b) => (a.lastInDate ? a.lastInDate.getTime() : 0) - (b.lastInDate ? b.lastInDate.getTime() : 0)); generatePrintTable(unusedData, 'print-unused-header', 'print-unused-body', [{ key: 'formattedLastInDate', label: '最終入庫'}]); const expirySoonData = processedData.filter(item => item.isExpirySoon).sort((a,b) => (a.remainingDays === null ? Infinity : a.remainingDays) - (b.remainingDays === null ? Infinity : b.remainingDays)); generatePrintTable(expirySoonData, 'print-expiry-header', 'print-expiry-body', [{ key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' }, { key: 'formattedExpiryDate', label: '有効期限'}]); printSection.classList.remove('hidden'); window.print(); printSection.classList.add('hidden'); } catch (error) { console.error("Error preparing print report:", error); messageArea.textContent = '印刷用レポート生成エラー'; messageArea.className = 'mt-4 text-center text-red-600 font-medium h-6'; printSection.classList.add('hidden'); } }
 
         // --- 初期化実行 ---
-        // Wrap initialization in DOMContentLoaded to ensure elements are ready
         document.addEventListener('DOMContentLoaded', initialize);
 
     </script>
