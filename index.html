@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>薬品在庫分析ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* カスタムスタイル */
+        body {
+            font-family: 'Inter', sans-serif; /* フォント設定 */
+        }
+        /* テーブルの条件付き書式用クラス */
+        .row-danger-high { background-color: #fee2e2; } /* 危険度高 (例: 赤系) */
+        .row-warning-expiry { background-color: #fffbeb; } /* 期限切迫 (例: 黄系) */
+        .row-warning-stagnant { background-color: #e0f2fe; } /* 滞留 (例: 青系) */
+        .row-unused { background-color: #f3f4f6; } /* 未使用 (例: グレー系) */
+
+        /* 印刷用スタイル */
+        @media print {
+            body * {
+                visibility: hidden; /* まず全て非表示 */
+            }
+            #print-section, #print-section * {
+                visibility: visible; /* 印刷セクションのみ表示 */
+            }
+            #print-section {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            button, input, select, textarea, #settings-section, #data-input-section, #inventory-list-controls, #analysis-report-controls, #print-button-container {
+                display: none !important; /* 操作要素は印刷しない */
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 9pt; /* 印刷用にフォントサイズ調整 */
+            }
+            th, td {
+                border: 1px solid #ccc;
+                padding: 4px;
+                text-align: left;
+            }
+            th {
+                background-color: #f2f2f2;
+            }
+            /* 印刷時の条件付き書式（背景色は印刷されない場合があるので、別の方法も検討） */
+            .row-danger-high { border-left: 3px solid #ef4444; }
+            .row-warning-expiry { border-left: 3px solid #f59e0b; }
+            .row-warning-stagnant { border-left: 3px solid #3b82f6; }
+            .row-unused { border-left: 3px solid #6b7280; }
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="container mx-auto bg-white p-6 rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold mb-6 text-center text-blue-800">薬品在庫分析ダッシュボード</h1>
+
+        <section id="settings-section" class="mb-8 p-4 border rounded-md bg-gray-50">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">1. データ入力・設定</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="inventory-data" class="block text-sm font-medium text-gray-700 mb-1">在庫データ (TSV形式)</label>
+                    <textarea id="inventory-data" rows="8" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="ここにタブ区切りの在庫データを貼り付けてください (1行目はヘッダー)..."></textarea>
+                    <p class="text-xs text-gray-500 mt-1">必須列: 有効期限, 最終出庫, 在庫金額(税別), 在庫数量, 薬品コード</p>
+                </div>
+                <div>
+                    <label for="exclude-list" class="block text-sm font-medium text-gray-700 mb-1">除外薬品リスト (薬品コード)</label>
+                    <textarea id="exclude-list" rows="8" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="除外したい薬品コードを1行に1つ入力..."></textarea>
+                </div>
+                <div>
+                    <label for="analysis-date" class="block text-sm font-medium text-gray-700 mb-1">分析基準日</label>
+                    <input type="date" id="analysis-date" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label for="risk-balance" class="block text-sm font-medium text-gray-700 mb-1">危険度バランス (左:有効期限重視 / 右:滞留日数重視)</label>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs">0%</span>
+                            <input type="range" id="risk-balance" min="0" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
+                            <span class="text-xs">100%</span>
+                            <span id="risk-balance-value" class="text-sm font-medium">50%</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="stagnant-threshold" class="block text-sm font-medium text-gray-700 mb-1">滞留在庫とみなす日数</label>
+                        <input type="number" id="stagnant-threshold" value="180" min="0" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label for="watchlist-count" class="block text-sm font-medium text-gray-700 mb-1">注目リスト表示件数</label>
+                        <select id="watchlist-count" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="5">5件</option>
+                            <option value="10" selected>10件</option>
+                            <option value="20">20件</option>
+                            <option value="50">50件</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 text-center">
+                <button id="process-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md transition duration-150 ease-in-out">
+                    データ読み込み & 分析実行
+                </button>
+                 <button id="recalculate-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-md transition duration-150 ease-in-out ml-4" disabled>
+                    再計算
+                </button>
+            </div>
+             <div id="message-area" class="mt-4 text-center text-red-600 font-medium"></div>
+        </section>
+
+        <section id="dashboard-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">2. ダッシュボード</h2>
+            <div id="kpi-area" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                </div>
+            <div id="watchlist-area" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                </div>
+        </section>
+
+        <section id="inventory-list-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">3. 在庫一覧</h2>
+            <div id="inventory-list-controls" class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div>
+                    <label for="search-inventory" class="block text-sm font-medium text-gray-700 mb-1">検索</label>
+                    <input type="text" id="search-inventory" placeholder="薬品名、コード等で検索..." class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                     <div>
+                        <label for="filter-category" class="block text-sm font-medium text-gray-700 mb-1">薬品種別</label>
+                        <select id="filter-category" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">すべて</option>
+                            </select>
+                    </div>
+                     <div>
+                        <label for="filter-risk" class="block text-sm font-medium text-gray-700 mb-1">危険度ランク</label>
+                        <select id="filter-risk" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">すべて</option>
+                            </select>
+                    </div>
+                 </div>
+                 <div class="flex justify-end items-center space-x-2">
+                     <label for="inventory-page-size" class="text-sm font-medium text-gray-700">表示件数:</label>
+                     <select id="inventory-page-size" class="p-2 border border-gray-300 rounded-md">
+                         <option value="50">50</option>
+                         <option value="100">100</option>
+                         <option value="200">200</option>
+                         <option value="all">全件</option>
+                     </select>
+                     <div id="inventory-pagination" class="flex items-center space-x-1">
+                         </div>
+                 </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 border">
+                    <thead class="bg-gray-100">
+                        <tr id="inventory-table-header">
+                            </tr>
+                    </thead>
+                    <tbody id="inventory-table-body" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+             <div id="inventory-list-summary" class="mt-2 text-sm text-gray-600"></div>
+        </section>
+
+        <section id="analysis-report-section" class="mb-8 p-4 border rounded-md bg-gray-50 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">4. 分析レポート</h2>
+            <div id="analysis-report-controls" class="mb-4 flex flex-wrap items-center gap-4">
+                <div class="flex border-b border-gray-300">
+                    <button data-tab="amountWorst" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300 active-tab">在庫金額ワースト</button>
+                    <button data-tab="stagnantWorst" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">滞留日数ワースト</button>
+                    <button data-tab="expirySoon" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">有効期限切迫</button>
+                    <button data-tab="riskWorst" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">危険度ランクワースト</button>
+                    <button data-tab="unused" class="tab-button py-2 px-4 text-sm font-medium text-center text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300">未使用在庫</button>
+                    </div>
+                <div>
+                    <label for="report-count" class="text-sm font-medium text-gray-700 mr-2">表示件数:</label>
+                    <select id="report-count" class="p-2 border border-gray-300 rounded-md">
+                        <option value="10">10件</option>
+                        <option value="50">50件</option>
+                        <option value="100" selected>100件</option>
+                        <option value="300">300件</option>
+                        <option value="500">500件</option>
+                        <option value="all">すべて</option>
+                    </select>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="exclude-top3" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="exclude-top3" class="ml-2 block text-sm text-gray-900">上位1位〜3位を除外</label>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 border">
+                    <thead class="bg-gray-100">
+                        <tr id="report-table-header">
+                            </tr>
+                    </thead>
+                    <tbody id="report-table-body" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="print-button-container" class="text-center mt-8 hidden">
+             <button id="print-report-button" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-md transition duration-150 ease-in-out">
+                在庫レポート印刷 (PDF)
+            </button>
+        </section>
+
+        <div id="print-section" class="hidden">
+            <h2 class="text-xl font-bold mb-4 text-center">在庫分析レポート</h2>
+            <p class="text-sm mb-4 text-center">分析基準日: <span id="print-analysis-date"></span></p>
+
+            <h3 class="text-lg font-semibold mt-6 mb-2">主要KPI</h3>
+            <div id="print-kpi" class="grid grid-cols-3 gap-2 mb-4 border p-2"></div>
+
+            <h3 class="text-lg font-semibold mt-6 mb-2">危険度ランク高 リスト</h3>
+            <table class="w-full border-collapse border border-gray-400 mb-4">
+                <thead id="print-risk-header" class="bg-gray-200"></thead>
+                <tbody id="print-risk-body"></tbody>
+            </table>
+
+             <h3 class="text-lg font-semibold mt-6 mb-2">滞留在庫リスト (<span id="print-stagnant-days"></span>日以上、未使用除く)</h3>
+            <table class="w-full border-collapse border border-gray-400 mb-4">
+                <thead id="print-stagnant-header" class="bg-gray-200"></thead>
+                <tbody id="print-stagnant-body"></tbody>
+            </table>
+
+            <h3 class="text-lg font-semibold mt-6 mb-2">未使用在庫リスト (最終入庫が古い順)</h3>
+            <table class="w-full border-collapse border border-gray-400 mb-4">
+                <thead id="print-unused-header" class="bg-gray-200"></thead>
+                <tbody id="print-unused-body"></tbody>
+            </table>
+
+            <h3 class="text-lg font-semibold mt-6 mb-2">期限切迫在庫リスト (90日以内)</h3>
+            <table class="w-full border-collapse border border-gray-400 mb-4">
+                <thead id="print-expiry-header" class="bg-gray-200"></thead>
+                <tbody id="print-expiry-body"></tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+        // --- グローバル変数 ---
+        let rawData = []; // 生の在庫データ (パース後)
+        let processedData = []; // 分析・計算後のデータ
+        let headers = []; // ヘッダー行
+        let excludeCodes = new Set(); // 除外薬品コード
+        let analysisDate = new Date(); // 分析基準日
+        let riskBalance = 0.5; // 危険度バランス (0=期限重視, 1=滞留重視)
+        let stagnantThreshold = 180; // 滞留日数閾値
+        let watchlistCount = 10; // 注目リスト表示件数
+
+        // 在庫一覧用
+        let inventoryCurrentPage = 1;
+        let inventoryPageSize = 50;
+        let inventorySortColumn = null;
+        let inventorySortDirection = 'asc'; // 'asc' or 'desc'
+        let inventoryFilterCategory = '';
+        let inventoryFilterRisk = '';
+        let inventorySearchTerm = '';
+
+        // 分析レポート用
+        let reportCurrentTab = 'amountWorst';
+        let reportCount = 100;
+        let reportExcludeTop3 = false;
+
+        // --- DOM要素 ---
+        const inventoryDataEl = document.getElementById('inventory-data');
+        const excludeListEl = document.getElementById('exclude-list');
+        const analysisDateEl = document.getElementById('analysis-date');
+        const riskBalanceEl = document.getElementById('risk-balance');
+        const riskBalanceValueEl = document.getElementById('risk-balance-value');
+        const stagnantThresholdEl = document.getElementById('stagnant-threshold');
+        const watchlistCountEl = document.getElementById('watchlist-count');
+        const processButton = document.getElementById('process-button');
+        const recalculateButton = document.getElementById('recalculate-button');
+        const messageArea = document.getElementById('message-area');
+
+        const dashboardSection = document.getElementById('dashboard-section');
+        const kpiArea = document.getElementById('kpi-area');
+        const watchlistArea = document.getElementById('watchlist-area');
+
+        const inventoryListSection = document.getElementById('inventory-list-section');
+        const inventoryTableHeader = document.getElementById('inventory-table-header');
+        const inventoryTableBody = document.getElementById('inventory-table-body');
+        const searchInventoryEl = document.getElementById('search-inventory');
+        const filterCategoryEl = document.getElementById('filter-category');
+        const filterRiskEl = document.getElementById('filter-risk');
+        const inventoryPageSizeEl = document.getElementById('inventory-page-size');
+        const inventoryPagination = document.getElementById('inventory-pagination');
+        const inventoryListSummary = document.getElementById('inventory-list-summary');
+
+
+        const analysisReportSection = document.getElementById('analysis-report-section');
+        const reportTabs = document.querySelectorAll('.tab-button');
+        const reportCountEl = document.getElementById('report-count');
+        const excludeTop3El = document.getElementById('exclude-top3');
+        const reportTableHeader = document.getElementById('report-table-header');
+        const reportTableBody = document.getElementById('report-table-body');
+
+        const printButtonContainer = document.getElementById('print-button-container');
+        const printReportButton = document.getElementById('print-report-button');
+        const printSection = document.getElementById('print-section');
+
+        // --- 初期設定 ---
+        function initialize() {
+            // 分析基準日のデフォルトを今日に設定
+            analysisDate = new Date();
+            analysisDate.setHours(0, 0, 0, 0); // 時刻をリセット
+            analysisDateEl.valueAsDate = analysisDate;
+
+            // イベントリスナーを設定
+            processButton.addEventListener('click', handleProcessData);
+            recalculateButton.addEventListener('click', handleRecalculate);
+            analysisDateEl.addEventListener('change', updateSettings);
+            riskBalanceEl.addEventListener('input', updateSettings);
+            stagnantThresholdEl.addEventListener('change', updateSettings);
+            watchlistCountEl.addEventListener('change', updateSettings);
+
+            searchInventoryEl.addEventListener('input', handleInventoryFilterChange);
+            filterCategoryEl.addEventListener('change', handleInventoryFilterChange);
+            filterRiskEl.addEventListener('change', handleInventoryFilterChange);
+            inventoryPageSizeEl.addEventListener('change', handleInventoryPageSizeChange);
+
+            reportTabs.forEach(tab => tab.addEventListener('click', handleReportTabChange));
+            reportCountEl.addEventListener('change', handleReportOptionsChange);
+            excludeTop3El.addEventListener('change', handleReportOptionsChange);
+
+            printReportButton.addEventListener('click', handlePrintReport);
+
+            // デフォルト値を表示に反映
+            updateRiskBalanceDisplay();
+        }
+
+        // --- 設定更新 ---
+        function updateSettings() {
+            analysisDate = analysisDateEl.valueAsDate || new Date();
+            analysisDate.setHours(0, 0, 0, 0);
+            riskBalance = parseInt(riskBalanceEl.value, 10) / 100;
+            stagnantThreshold = parseInt(stagnantThresholdEl.value, 10) || 180;
+            watchlistCount = parseInt(watchlistCountEl.value, 10) || 10;
+            updateRiskBalanceDisplay();
+            // 設定変更後は再計算が必要なことを示唆（例：ボタンの色を変えるなど）
+            recalculateButton.disabled = false; // 再計算ボタンを有効化
+             messageArea.textContent = '設定が変更されました。「再計算」ボタンを押して反映してください。';
+             messageArea.className = 'mt-4 text-center text-orange-600 font-medium';
+        }
+
+        function updateRiskBalanceDisplay() {
+            riskBalanceValueEl.textContent = `${riskBalanceEl.value}%`;
+        }
+
+        // --- データ処理関連 ---
+
+        // Excelシリアル値をDateオブジェクトに変換 (簡易版、1900年閏年問題考慮)
+        function excelSerialToDate(serial) {
+            if (isNaN(serial) || serial <= 0) return null;
+            // Excelは1900-02-29を存在するものとして扱うバグがある
+            // 60以下は1900年、61以上は1日ずらす
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // 1899-12-30 を起点とする
+            const days = Math.floor(serial);
+            const fractionalDay = serial - days;
+            const millisecondsPerDay = 24 * 60 * 60 * 1000;
+            const dateMilliseconds = excelEpoch.getTime() + days * millisecondsPerDay;
+            let resultDate = new Date(dateMilliseconds);
+
+             // 時刻部分を加算 (UTC基準で計算)
+            if (fractionalDay > 0) {
+                 const totalSeconds = Math.round(fractionalDay * 86400); // 1日の秒数
+                 resultDate.setUTCSeconds(resultDate.getUTCSeconds() + totalSeconds);
+            }
+
+            // タイムゾーンオフセットを考慮してローカル日付に
+            const timezoneOffset = resultDate.getTimezoneOffset() * 60 * 1000;
+            resultDate = new Date(resultDate.getTime() - timezoneOffset);
+
+            return resultDate;
+        }
+
+        // 日付文字列をパースする関数 (YYYY/MM/DD, YYYY-MM-DD, Excelシリアル対応)
+        function parseDate(dateString) {
+            if (!dateString) return null;
+            dateString = String(dateString).trim();
+
+            // YYYY/MM/DD または YYYY-MM-DD 形式
+            const regex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/;
+            const match = dateString.match(regex);
+            if (match) {
+                const year = parseInt(match[1], 10);
+                const month = parseInt(match[2], 10) - 1; // Month is 0-indexed
+                const day = parseInt(match[3], 10);
+                const date = new Date(year, month, day);
+                 // 年が0-99の場合、19xx or 20xx に補正されることがあるためチェック
+                if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+                    date.setHours(0,0,0,0);
+                    return date;
+                }
+            }
+
+            // Excelシリアル値形式 (数値かどうか)
+            const serial = Number(dateString);
+            if (!isNaN(serial) && serial > 0 && serial < 300000) { // 妥当な範囲のシリアル値かチェック
+                 try {
+                    const excelDate = excelSerialToDate(serial);
+                    if (excelDate && !isNaN(excelDate.getTime())) {
+                         excelDate.setHours(0,0,0,0);
+                        return excelDate;
+                    }
+                 } catch(e) {
+                    console.warn(`Excel date parsing failed for ${serial}:`, e);
+                 }
+            }
+
+            // その他の形式や無効な日付
+            const parsed = new Date(dateString);
+            if (!isNaN(parsed.getTime())) {
+                 parsed.setHours(0,0,0,0);
+                 return parsed; // 一応標準のDate.parseも試す
+            }
+
+            console.warn(`Could not parse date: ${dateString}`);
+            return null; // パース失敗
+        }
+
+        // 日数を計算する関数
+        function calculateDaysBetween(date1, date2) {
+            if (!date1 || !date2 || isNaN(date1.getTime()) || isNaN(date2.getTime())) {
+                return null; // 無効な日付の場合はnull
+            }
+            const diffTime = date1.getTime() - date2.getTime();
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // ミリ秒を日に変換し切り上げ
+        }
+
+        // TSVデータをパースする関数 (簡易版)
+        function parseTSV(tsvString) {
+            if (!tsvString) return { headers: [], data: [] };
+            const lines = tsvString.trim().split('\n');
+            if (lines.length < 1) return { headers: [], data: [] };
+
+            const tempHeaders = lines[0].split('\t').map(h => h.trim());
+            const data = lines.slice(1).map(line => {
+                const values = line.split('\t').map(v => v.trim());
+                let row = {};
+                tempHeaders.forEach((header, index) => {
+                    row[header] = values[index] || ''; // 値がない場合は空文字
+                });
+                return row;
+            });
+            return { headers: tempHeaders, data: data };
+        }
+
+        // 必須列のチェック
+        function validateHeaders(parsedHeaders) {
+            const requiredColumns = ['有効期限', '最終出庫', '在庫金額(税別)', '在庫数量', '薬品コード'];
+            const missingColumns = requiredColumns.filter(col => !parsedHeaders.includes(col));
+            return missingColumns;
+        }
+
+        // データ処理のメイン関数
+        function processInventoryData(rawData, currentHeaders) {
+            const processed = rawData.map((item, index) => {
+                const newItem = { ...item, originalIndex: index }; // 元のインデックスを保持
+
+                // --- 値の整形・変換 ---
+                // 在庫金額: カンマを除去して数値に
+                const priceKey = '在庫金額(税別)';
+                newItem[priceKey] = item[priceKey] ? parseFloat(String(item[priceKey]).replace(/,/g, '')) : 0;
+                if (isNaN(newItem[priceKey])) newItem[priceKey] = 0;
+
+                // 在庫数量: 数値に変換
+                const quantityKey = '在庫数量';
+                newItem[quantityKey] = item[quantityKey] ? parseFloat(String(item[quantityKey]).replace(/,/g, '')) : 0;
+                 if (isNaN(newItem[quantityKey])) newItem[quantityKey] = 0;
+
+
+                // --- 日付のパース ---
+                const expiryDateKey = '有効期限';
+                const lastOutDateKey = '最終出庫';
+                const lastInDateKey = '最終入庫'; // 未使用在庫の判定用
+                const stagnantDateKey = '(停滞)'; // 滞留日数計算用 (優先)
+
+                newItem.expiryDate = parseDate(item[expiryDateKey]);
+                newItem.lastOutDate = parseDate(item[lastOutDateKey]);
+                newItem.lastInDate = parseDate(item[lastInDateKey]); // 最終入庫日もパース
+                newItem.stagnantDate = parseDate(item[stagnantDateKey]); // (停滞)列の日付
+
+                 // 整形済み日付文字列
+                newItem.formattedExpiryDate = newItem.expiryDate ? newItem.expiryDate.toLocaleDateString('ja-JP') : '不明';
+                newItem.formattedLastOutDate = newItem.lastOutDate ? newItem.lastOutDate.toLocaleDateString('ja-JP') : '記録なし';
+                newItem.formattedLastInDate = newItem.lastInDate ? newItem.lastInDate.toLocaleDateString('ja-JP') : '不明';
+
+
+                // --- 残り日数計算 ---
+                newItem.remainingDays = calculateDaysBetween(newItem.expiryDate, analysisDate);
+                // 期限切れはマイナスになるので、扱いやすいように 0 または null にするか検討 (ここではそのまま)
+
+                // --- 滞留日数計算 ---
+                let stagnantDaysBaseDate = newItem.stagnantDate || newItem.lastOutDate; // (停滞)列があれば優先
+                if (stagnantDaysBaseDate) {
+                    newItem.stagnantDays = calculateDaysBetween(analysisDate, stagnantDaysBaseDate);
+                } else {
+                    // 最終出庫記録がない場合
+                    newItem.stagnantDays = 9999; // 要件通り9999とする
+                }
+                // 滞留日数がマイナスになる場合（未来の出庫日など）は 0 とする
+                if (newItem.stagnantDays < 0) newItem.stagnantDays = 0;
+
+
+                // --- 危険度ランク計算 ---
+                let expiryScore = 0;
+                let stagnantScore = 0;
+
+                // 期限切れは強制的にランク10
+                if (newItem.remainingDays !== null && newItem.remainingDays < 0) {
+                    newItem.riskRank = 10;
+                } else {
+                    // 残り日数スコア (例: 365日以上を0点、0日を10点とする線形スコア)
+                    if (newItem.remainingDays !== null) {
+                         expiryScore = Math.max(0, 10 - (newItem.remainingDays / 36.5)); // 365日で10点満点
+                    } else {
+                        expiryScore = 5; // 日付不明は中間点
+                    }
+
+                    // 滞留日数スコア (例: 0日を0点、365日以上を10点とする線形スコア)
+                    // 9999 (未使用) の場合は最大スコア
+                     if (newItem.stagnantDays === 9999) {
+                         stagnantScore = 10;
+                     } else if (newItem.stagnantDays !== null) {
+                         stagnantScore = Math.min(10, newItem.stagnantDays / 36.5); // 365日で10点満点
+                     } else {
+                         stagnantScore = 0; // 日付不明は0点
+                     }
+
+                    // 重み付けして合算 (0-10の範囲に収める)
+                    // riskBalance: 0=期限重視, 1=滞留重視
+                    let totalScore = (expiryScore * (1 - riskBalance)) + (stagnantScore * riskBalance);
+                    newItem.riskRank = Math.max(1, Math.min(10, Math.ceil(totalScore))); // 1-10の整数ランクに変換
+                }
+
+                 // --- フラグ設定 ---
+                newItem.isExpired = newItem.remainingDays !== null && newItem.remainingDays < 0;
+                newItem.isExpirySoon = newItem.remainingDays !== null && newItem.remainingDays >= 0 && newItem.remainingDays <= 90;
+                newItem.isStagnant = newItem.stagnantDays >= stagnantThreshold && newItem.stagnantDays !== 9999; // 未使用は除く
+                newItem.isUnused = newItem.stagnantDays === 9999; // 滞留日数9999を未使用とする
+
+                return newItem;
+            });
+
+            // 除外リストに基づいてフィルタリング
+            excludeCodes = new Set(excludeListEl.value.split('\n').map(code => code.trim()).filter(code => code));
+            const filtered = processed.filter(item => !excludeCodes.has(item['薬品コード']));
+
+            return filtered;
+        }
+
+        // --- UI更新関数 ---
+
+        // KPI表示を更新
+        function updateDashboardKPIs(data) {
+            kpiArea.innerHTML = ''; // クリア
+
+            const totalItems = data.length;
+            const totalValue = data.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
+
+            const highRiskItems = data.filter(item => item.riskRank >= 8); // 例: ランク8以上を要注意
+            const highRiskCount = highRiskItems.length;
+            const highRiskValue = highRiskItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
+
+            const stagnantItems = data.filter(item => item.isStagnant);
+            const stagnantCount = stagnantItems.length;
+            const stagnantValue = stagnantItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
+
+            const expirySoonItems = data.filter(item => item.isExpirySoon);
+            const expirySoonCount = expirySoonItems.length;
+            const expirySoonValue = expirySoonItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
+
+            const unusedItems = data.filter(item => item.isUnused);
+            const unusedCount = unusedItems.length;
+            const unusedValue = unusedItems.reduce((sum, item) => sum + (item['在庫金額(税別)'] || 0), 0);
+
+            const kpis = [
+                { label: '総在庫品目数', value: totalItems.toLocaleString() },
+                { label: '総在庫金額(税別)', value: `¥${Math.round(totalValue).toLocaleString()}` },
+                { label: `要注意在庫 (${highRiskCount}品目)`, value: `¥${Math.round(highRiskValue).toLocaleString()}`, highlight: true },
+                { label: `滞留在庫 (${stagnantCount}品目)`, value: `¥${Math.round(stagnantValue).toLocaleString()}`, highlight: true },
+                { label: `期限切迫在庫 (${expirySoonCount}品目)`, value: `¥${Math.round(expirySoonValue).toLocaleString()}`, highlight: true },
+                { label: `未使用在庫 (${unusedCount}品目)`, value: `¥${Math.round(unusedValue).toLocaleString()}`, highlight: true },
+            ];
+
+            kpis.forEach(kpi => {
+                const div = document.createElement('div');
+                div.className = `p-4 rounded-lg shadow ${kpi.highlight ? 'bg-red-100' : 'bg-blue-50'}`;
+                div.innerHTML = `
+                    <dt class="text-sm font-medium text-gray-500 truncate">${kpi.label}</dt>
+                    <dd class="mt-1 text-xl font-semibold ${kpi.highlight ? 'text-red-700' : 'text-blue-800'}">${kpi.value}</dd>
+                `;
+                kpiArea.appendChild(div);
+            });
+        }
+
+        // 注目リスト表示を更新
+        function updateDashboardWatchlists(data) {
+            watchlistArea.innerHTML = ''; // クリア
+
+            const createListElement = (title, items, displayFields) => {
+                const div = document.createElement('div');
+                div.className = 'p-4 border rounded-md bg-white shadow';
+                let listHtml = `<h3 class="text-md font-semibold mb-2 text-gray-700">${title} (上位${watchlistCount}件)</h3>`;
+                listHtml += '<ul class="divide-y divide-gray-200 text-sm">';
+                if (items.length === 0) {
+                    listHtml += '<li class="py-1 text-gray-500">該当なし</li>';
+                } else {
+                    items.slice(0, watchlistCount).forEach(item => {
+                        const displayValues = displayFields.map(field => {
+                            let value = item[field.key];
+                            if (field.format === 'date') value = item.formattedExpiryDate;
+                            else if (field.format === 'days') value = `${value}日`;
+                            else if (field.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`;
+                            else if (field.format === 'number') value = (value || 0).toLocaleString();
+                            return `<span class="font-medium">${field.label}:</span> ${value || '-'}`;
+                        }).join(', ');
+                        listHtml += `<li class="py-1">${item['薬品名称'] || item['薬品コード']}: ${displayValues}</li>`;
+                    });
+                }
+                listHtml += '</ul>';
+                div.innerHTML = listHtml;
+                return div;
+            };
+
+            // 滞留日数ワースト（未使用除く）
+            const stagnantWorst = [...data]
+                .filter(item => !item.isUnused) // 未使用を除く
+                .sort((a, b) => (b.stagnantDays || 0) - (a.stagnantDays || 0));
+            watchlistArea.appendChild(createListElement('滞留日数ワースト', stagnantWorst, [
+                 { key: 'stagnantDays', label: '滞留', format: 'days' }
+            ]));
+
+            // 有効期限切迫
+            const expirySoon = [...data]
+                .filter(item => item.remainingDays !== null && item.remainingDays >= 0) // 期限切れは除き、未来の日付のみ
+                .sort((a, b) => (a.remainingDays || Infinity) - (b.remainingDays || Infinity));
+            watchlistArea.appendChild(createListElement('有効期限切迫', expirySoon, [
+                { key: 'remainingDays', label: '残り', format: 'days' },
+                { key: 'formattedExpiryDate', label: '期限' }
+            ]));
+
+
+            // 在庫金額トップ
+            const amountTop = [...data]
+                .sort((a, b) => (b['在庫金額(税別)'] || 0) - (a['在庫金額(税別)'] || 0));
+            watchlistArea.appendChild(createListElement('在庫金額トップ', amountTop, [
+                { key: '在庫金額(税別)', label: '金額', format: 'currency' }
+            ]));
+
+            // 未使用在庫（最終入庫が古い順）
+            const unusedOldestIn = [...data]
+                .filter(item => item.isUnused)
+                .sort((a, b) => {
+                    const dateA = a.lastInDate || new Date(0); // 日付不明は古く扱う
+                    const dateB = b.lastInDate || new Date(0);
+                    return dateA.getTime() - dateB.getTime(); // 古い順
+                });
+             watchlistArea.appendChild(createListElement('未使用在庫 (最終入庫日順)', unusedOldestIn, [
+                 { key: 'formattedLastInDate', label: '最終入庫'}
+             ]));
+        }
+
+        // 在庫一覧テーブルを更新
+        function updateInventoryList() {
+            // 1. フィルタリング
+            let filteredData = processedData.filter(item => {
+                // カテゴリフィルタ
+                const categoryKey = '薬品種別'; // 要件に合わせて変更
+                if (inventoryFilterCategory && item[categoryKey] !== inventoryFilterCategory) {
+                    return false;
+                }
+                // 危険度ランクフィルタ
+                if (inventoryFilterRisk && String(item.riskRank) !== inventoryFilterRisk) {
+                    return false;
+                }
+                // 検索フィルタ (薬品名称, フリガナ, メーカー名, コード)
+                if (inventorySearchTerm) {
+                    const term = inventorySearchTerm.toLowerCase();
+                    const name = String(item['薬品名称'] || '').toLowerCase();
+                    const kana = String(item['フリガナ'] || '').toLowerCase(); // カタカナ/ひらがな変換は未実装
+                    const maker = String(item['メーカー'] || '').toLowerCase();
+                    const code = String(item['薬品コード'] || '').toLowerCase();
+                    if (!name.includes(term) && !kana.includes(term) && !maker.includes(term) && !code.includes(term)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            // 2. ソート
+            if (inventorySortColumn) {
+                filteredData.sort((a, b) => {
+                    let valA = a[inventorySortColumn];
+                    let valB = b[inventorySortColumn];
+
+                    // 数値、日付、文字列で比較方法を変える
+                    if (inventorySortColumn.includes('Date') || inventorySortColumn === 'expiryDate' || inventorySortColumn === 'lastOutDate' || inventorySortColumn === 'lastInDate') {
+                        valA = valA instanceof Date ? valA.getTime() : -Infinity; // 無効な日付は先頭/末尾に
+                        valB = valB instanceof Date ? valB.getTime() : -Infinity;
+                    } else if (typeof valA === 'number' && typeof valB === 'number') {
+                       // 数値比較
+                    } else {
+                        // 文字列比較 (デフォルト)
+                        valA = String(valA || '').toLowerCase();
+                        valB = String(valB || '').toLowerCase();
+                    }
+
+                    if (valA < valB) return inventorySortDirection === 'asc' ? -1 : 1;
+                    if (valA > valB) return inventorySortDirection === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            // 3. ページネーション
+            const totalFilteredItems = filteredData.length;
+            let paginatedData = [];
+            let totalPages = 1;
+
+            if (inventoryPageSize === 'all') {
+                paginatedData = filteredData;
+                inventoryCurrentPage = 1; // 全件表示の場合は常に1ページ目
+            } else {
+                const size = parseInt(inventoryPageSize, 10);
+                totalPages = Math.ceil(totalFilteredItems / size);
+                if (inventoryCurrentPage > totalPages) inventoryCurrentPage = totalPages || 1;
+                const startIndex = (inventoryCurrentPage - 1) * size;
+                const endIndex = startIndex + size;
+                paginatedData = filteredData.slice(startIndex, endIndex);
+            }
+
+            // 4. テーブル描画
+            renderInventoryTable(paginatedData);
+
+            // 5. ページネーションコントロール描画
+            renderInventoryPagination(totalFilteredItems, totalPages);
+
+            // 6. サマリー表示
+            inventoryListSummary.textContent = `全 ${processedData.length} 件中 ${totalFilteredItems} 件表示 (${inventoryCurrentPage} / ${totalPages} ページ)`;
+
+        }
+
+        // 在庫一覧テーブルのヘッダーを生成
+        function renderInventoryTableHeader() {
+            inventoryTableHeader.innerHTML = ''; // クリア
+            const displayHeaders = [ // 表示したい列とソート可否
+                { key: '薬品コード', label: 'コード', sortable: true },
+                { key: '薬品名称', label: '薬品名称', sortable: true },
+                { key: 'フリガナ', label: 'フリガナ', sortable: true },
+                { key: 'メーカー', label: 'メーカー', sortable: true },
+                { key: '薬品種別', label: '種別', sortable: true }, // filterCategoryEl の更新も必要
+                { key: '在庫数量', label: '数量', sortable: true, align: 'right' },
+                { key: '単位', label: '単位', sortable: false },
+                { key: '在庫金額(税別)', label: '金額(税別)', sortable: true, align: 'right' },
+                { key: 'formattedExpiryDate', label: '有効期限', sortable: true, originalKey: 'expiryDate' },
+                { key: 'remainingDays', label: '残り日数', sortable: true, align: 'right' },
+                { key: 'formattedLastOutDate', label: '最終出庫', sortable: true, originalKey: 'lastOutDate' },
+                { key: 'stagnantDays', label: '滞留日数', sortable: true, align: 'right' },
+                { key: 'riskRank', label: '危険度', sortable: true, align: 'center' },
+                { key: 'formattedLastInDate', label: '最終入庫', sortable: true, originalKey: 'lastInDate'}, // 追加
+                // 他に必要なヘッダーがあれば追加
+            ];
+
+            displayHeaders.forEach(headerInfo => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${headerInfo.align === 'right' ? 'text-right' : (headerInfo.align === 'center' ? 'text-center' : '')}`;
+                th.textContent = headerInfo.label;
+                if (headerInfo.sortable) {
+                    th.style.cursor = 'pointer';
+                    th.addEventListener('click', () => handleInventorySort(headerInfo.originalKey || headerInfo.key));
+                    // ソート中の列にアイコン表示
+                    if ((headerInfo.originalKey || headerInfo.key) === inventorySortColumn) {
+                        th.innerHTML += inventorySortDirection === 'asc' ? ' <span class="text-blue-500">&uarr;</span>' : ' <span class="text-blue-500">&darr;</span>';
+                    }
+                }
+                inventoryTableHeader.appendChild(th);
+            });
+        }
+
+        // 在庫一覧テーブルのボディを描画
+        function renderInventoryTable(data) {
+            inventoryTableBody.innerHTML = ''; // クリア
+            if (data.length === 0) {
+                inventoryTableBody.innerHTML = `<tr><td colspan="${inventoryTableHeader.children.length}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">データがありません</td></tr>`;
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                // 条件付き書式クラスを適用
+                let rowClass = '';
+                 if (item.riskRank >= 8) rowClass = 'row-danger-high'; // 危険度高
+                 else if (item.isExpired) rowClass = 'row-danger-high'; // 期限切れも高リスク色
+                 else if (item.isExpirySoon) rowClass = 'row-warning-expiry'; // 期限切迫
+                 else if (item.isStagnant) rowClass = 'row-warning-stagnant'; // 滞留
+                 else if (item.isUnused) rowClass = 'row-unused'; // 未使用
+                tr.className = rowClass;
+
+
+                Array.from(inventoryTableHeader.children).forEach(th => {
+                    const td = document.createElement('td');
+                    td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800';
+                     const headerKey = th.textContent.split(' ')[0]; // ヘッダーラベルからキーを推測 (簡易的)
+                     // 正確なキーマッピングが必要
+                     const displayKey = Array.from(inventoryTableHeader.children).indexOf(th);
+                     const headerInfo = [ // renderInventoryTableHeader と同じ定義を使うべき
+                        { key: '薬品コード' }, { key: '薬品名称' }, { key: 'フリガナ' }, { key: 'メーカー' },
+                        { key: '薬品種別' }, { key: '在庫数量', align: 'right', format: 'number' }, { key: '単位' },
+                        { key: '在庫金額(税別)', align: 'right', format: 'currency' }, { key: 'formattedExpiryDate' },
+                        { key: 'remainingDays', align: 'right', format: 'days' }, { key: 'formattedLastOutDate' },
+                        { key: 'stagnantDays', align: 'right', format: 'daysOr9999' }, { key: 'riskRank', align: 'center' },
+                        { key: 'formattedLastInDate' }
+                     ][displayKey];
+
+                     let value = item[headerInfo.key];
+
+                     // 表示フォーマット
+                     if (headerInfo.format === 'currency') {
+                         value = `¥${Math.round(value || 0).toLocaleString()}`;
+                     } else if (headerInfo.format === 'number') {
+                         value = (value || 0).toLocaleString();
+                     } else if (headerInfo.format === 'days') {
+                         value = value !== null ? `${value}日` : '-';
+                     } else if (headerInfo.format === 'daysOr9999') {
+                         value = value === 9999 ? '未使用' : (value !== null ? `${value}日` : '-');
+                     }
+
+
+                     td.textContent = value !== undefined && value !== null ? value : '-'; // null や undefined は '-' で表示
+                     if (headerInfo.align === 'right') td.classList.add('text-right');
+                     if (headerInfo.align === 'center') td.classList.add('text-center');
+
+                     // 特定の列にスタイル適用 (例: 危険度ランク)
+                     if (headerInfo.key === 'riskRank') {
+                         td.classList.add('font-bold');
+                         if (value >= 8) td.classList.add('text-red-600');
+                         else if (value >= 5) td.classList.add('text-yellow-600');
+                     }
+                      if (headerInfo.key === 'remainingDays' && item.isExpired) {
+                          td.classList.add('text-red-600', 'font-bold'); // 期限切れを強調
+                      } else if (headerInfo.key === 'remainingDays' && item.isExpirySoon) {
+                          td.classList.add('text-yellow-600');
+                      }
+                       if (headerInfo.key === 'stagnantDays' && item.isStagnant) {
+                          td.classList.add('text-blue-600');
+                      }
+                       if (headerInfo.key === 'stagnantDays' && item.isUnused) {
+                          td.classList.add('text-gray-500');
+                      }
+
+
+                    tr.appendChild(td);
+                });
+                inventoryTableBody.appendChild(tr);
+            });
+        }
+
+         // 在庫一覧のフィルタオプションを更新 (薬品種別、危険度ランク)
+        function updateInventoryFilterOptions() {
+            // 薬品種別
+            const categoryKey = '薬品種別'; // 要件に合わせて変更
+            const categories = [...new Set(processedData.map(item => item[categoryKey]).filter(Boolean))].sort();
+            filterCategoryEl.innerHTML = '<option value="">すべて</option>';
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                filterCategoryEl.appendChild(option);
+            });
+            filterCategoryEl.value = inventoryFilterCategory; // 選択状態を復元
+
+            // 危険度ランク
+            const risks = [...new Set(processedData.map(item => item.riskRank).filter(r => r !== null && r !== undefined))].sort((a, b) => a - b);
+            filterRiskEl.innerHTML = '<option value="">すべて</option>';
+             risks.forEach(rank => {
+                const option = document.createElement('option');
+                option.value = String(rank);
+                option.textContent = `ランク ${rank}`;
+                filterRiskEl.appendChild(option);
+            });
+             filterRiskEl.value = inventoryFilterRisk; // 選択状態を復元
+        }
+
+
+        // 在庫一覧のページネーションコントロールを描画
+        function renderInventoryPagination(totalItems, totalPages) {
+            inventoryPagination.innerHTML = ''; // クリア
+            if (totalPages <= 1 && inventoryPageSize !== 'all') return; // 1ページ以下なら不要
+
+            const createButton = (text, page, isDisabled = false, isActive = false) => {
+                const button = document.createElement('button');
+                button.textContent = text;
+                button.disabled = isDisabled;
+                button.className = `px-3 py-1 text-sm border rounded-md ${
+                    isActive ? 'bg-blue-500 text-white border-blue-500' :
+                    isDisabled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
+                    'bg-white text-blue-600 border-gray-300 hover:bg-gray-100'
+                }`;
+                if (!isDisabled) {
+                    button.onclick = () => {
+                        inventoryCurrentPage = page;
+                        updateInventoryList();
+                    };
+                }
+                return button;
+            };
+
+            // Previous Button
+            inventoryPagination.appendChild(createButton('前へ', inventoryCurrentPage - 1, inventoryCurrentPage === 1));
+
+            // Page Number Buttons (simplified: show current and neighbors)
+            const maxPagesToShow = 5;
+            let startPage = Math.max(1, inventoryCurrentPage - Math.floor(maxPagesToShow / 2));
+            let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+            if (endPage - startPage + 1 < maxPagesToShow) {
+                 startPage = Math.max(1, endPage - maxPagesToShow + 1);
+            }
+
+
+            if (startPage > 1) {
+                 inventoryPagination.appendChild(createButton('1', 1));
+                 if (startPage > 2) {
+                     const span = document.createElement('span');
+                     span.textContent = '...';
+                     span.className = 'px-2 py-1 text-sm text-gray-500';
+                     inventoryPagination.appendChild(span);
+                 }
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                inventoryPagination.appendChild(createButton(String(i), i, false, i === inventoryCurrentPage));
+            }
+
+             if (endPage < totalPages) {
+                 if (endPage < totalPages - 1) {
+                     const span = document.createElement('span');
+                     span.textContent = '...';
+                     span.className = 'px-2 py-1 text-sm text-gray-500';
+                     inventoryPagination.appendChild(span);
+                 }
+                 inventoryPagination.appendChild(createButton(String(totalPages), totalPages));
+             }
+
+
+            // Next Button
+            inventoryPagination.appendChild(createButton('次へ', inventoryCurrentPage + 1, inventoryCurrentPage === totalPages));
+        }
+
+        // 分析レポートテーブルを更新
+        function updateAnalysisReport() {
+            let reportData = [];
+            let sortKey = '';
+            let sortDirection = 'desc'; // デフォルトは降順 (ワースト系)
+            let displayHeadersConfig = []; // レポートの種類に応じたヘッダー
+
+            const baseHeaders = [
+                { key: '薬品コード', label: 'コード' },
+                { key: '薬品名称', label: '薬品名称' },
+                { key: 'メーカー', label: 'メーカー' },
+            ];
+
+            switch (reportCurrentTab) {
+                case 'amountWorst':
+                    sortKey = '在庫金額(税別)';
+                    sortDirection = 'desc';
+                    reportData = [...processedData];
+                    displayHeadersConfig = [
+                        ...baseHeaders,
+                        { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
+                        { key: '在庫数量', label: '数量', format: 'number', align: 'right' },
+                    ];
+                    break;
+                case 'stagnantWorst':
+                    sortKey = 'stagnantDays';
+                    sortDirection = 'desc';
+                    reportData = [...processedData].filter(item => !item.isUnused); // 未使用は除く
+                     displayHeadersConfig = [
+                        ...baseHeaders,
+                        { key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' },
+                        { key: 'formattedLastOutDate', label: '最終出庫' },
+                    ];
+                    break;
+                case 'expirySoon':
+                    sortKey = 'remainingDays';
+                    sortDirection = 'asc'; // 昇順 (期限が近い順)
+                    reportData = [...processedData].filter(item => item.remainingDays !== null && item.remainingDays >= 0); // 期限切れ除く
+                    displayHeadersConfig = [
+                        ...baseHeaders,
+                        { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
+                        { key: 'formattedExpiryDate', label: '有効期限' },
+                    ];
+                    break;
+                case 'riskWorst':
+                    sortKey = 'riskRank';
+                    sortDirection = 'desc';
+                    reportData = [...processedData];
+                     displayHeadersConfig = [
+                        ...baseHeaders,
+                        { key: 'riskRank', label: '危険度ランク', align: 'center' },
+                        { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
+                        { key: 'stagnantDays', label: '滞留日数', format: 'daysOr9999', align: 'right' },
+                    ];
+                    break;
+                 case 'unused':
+                    sortKey = 'lastInDate'; // 最終入庫日でソート
+                    sortDirection = 'asc'; // 古い順
+                    reportData = [...processedData].filter(item => item.isUnused);
+                    displayHeadersConfig = [
+                        ...baseHeaders,
+                        { key: 'formattedLastInDate', label: '最終入庫日' },
+                         { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
+                    ];
+                    break;
+                // 他のレポートタイプを追加...
+                default:
+                    reportData = [];
+                    displayHeadersConfig = baseHeaders;
+            }
+
+            // ソート
+            reportData.sort((a, b) => {
+                 let valA = a[sortKey];
+                 let valB = b[sortKey];
+
+                 // 日付の場合
+                 if (valA instanceof Date && valB instanceof Date) {
+                     valA = valA.getTime();
+                     valB = valB.getTime();
+                 } else if (valA instanceof Date) { // 片方だけ日付
+                     valA = valA.getTime();
+                     valB = sortDirection === 'asc' ? Infinity : -Infinity; // 不明な値は末尾に
+                 } else if (valB instanceof Date) {
+                     valB = valB.getTime();
+                     valA = sortDirection === 'asc' ? Infinity : -Infinity;
+                 }
+                 // 数値の場合
+                 else if (typeof valA === 'number' && typeof valB === 'number') {
+                     // そのまま比較
+                 }
+                 // 9999 (未使用) を特別扱いする場合 (滞留日数)
+                 else if (sortKey === 'stagnantDays') {
+                     if (valA === 9999 && valB !== 9999) return sortDirection === 'desc' ? -1 : 1; // 未使用を先頭/末尾に
+                     if (valB === 9999 && valA !== 9999) return sortDirection === 'desc' ? 1 : -1;
+                     if (valA === 9999 && valB === 9999) return 0; // 両方未使用なら順序維持
+                     valA = valA === null ? (sortDirection === 'desc' ? -1 : Infinity) : valA; // nullは滞留短い扱い
+                     valB = valB === null ? (sortDirection === 'desc' ? -1 : Infinity) : valB;
+                 }
+                 // 文字列・その他の場合
+                 else {
+                     valA = String(valA || '').toLowerCase();
+                     valB = String(valB || '').toLowerCase();
+                 }
+
+
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            // 上位3件除外
+            if (reportExcludeTop3) {
+                reportData = reportData.slice(3);
+            }
+
+            // 表示件数制限
+            const count = reportCount === 'all' ? reportData.length : parseInt(reportCount, 10);
+            const finalReportData = reportData.slice(0, count);
+
+            // テーブル描画
+            renderReportTable(finalReportData, displayHeadersConfig);
+        }
+
+        // 分析レポートテーブルを描画
+        function renderReportTable(data, headersConfig) {
+            // ヘッダー描画
+            reportTableHeader.innerHTML = '';
+            const headerRow = reportTableHeader.insertRow();
+             headerRow.insertCell().textContent = '#'; // 連番用
+            headersConfig.forEach(conf => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.className = `px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${conf.align === 'right' ? 'text-right' : (conf.align === 'center' ? 'text-center' : '')}`;
+                th.textContent = conf.label;
+                headerRow.appendChild(th);
+            });
+
+
+            // ボディ描画
+            reportTableBody.innerHTML = '';
+            if (data.length === 0) {
+                reportTableBody.innerHTML = `<tr><td colspan="${headersConfig.length + 1}" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">データがありません</td></tr>`;
+                return;
+            }
+
+            data.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                // 条件付き書式クラスを適用 (在庫一覧と同様に)
+                let rowClass = '';
+                 if (item.riskRank >= 8) rowClass = 'row-danger-high';
+                 else if (item.isExpired) rowClass = 'row-danger-high';
+                 else if (item.isExpirySoon) rowClass = 'row-warning-expiry';
+                 else if (item.isStagnant) rowClass = 'row-warning-stagnant';
+                 else if (item.isUnused) rowClass = 'row-unused';
+                tr.className = rowClass;
+
+                tr.insertCell().textContent = index + 1 + (reportExcludeTop3 ? 3 : 0); // 連番 (除外考慮)
+
+                headersConfig.forEach(conf => {
+                    const td = document.createElement('td');
+                    td.className = 'px-4 py-3 whitespace-nowrap text-sm text-gray-800';
+                    let value = item[conf.key];
+
+                    // フォーマット適用
+                     if (conf.format === 'currency') {
+                         value = `¥${Math.round(value || 0).toLocaleString()}`;
+                     } else if (conf.format === 'number') {
+                         value = (value || 0).toLocaleString();
+                     } else if (conf.format === 'days') {
+                         value = value !== null ? `${value}日` : '-';
+                     } else if (conf.format === 'daysOr9999') {
+                         value = value === 9999 ? '未使用' : (value !== null ? `${value}日` : '-');
+                     }
+
+                    td.textContent = value !== undefined && value !== null ? value : '-';
+                     if (conf.align === 'right') td.classList.add('text-right');
+                     if (conf.align === 'center') td.classList.add('text-center');
+
+                     // 在庫一覧と同様のスタイル適用
+                     if (conf.key === 'riskRank') {
+                         td.classList.add('font-bold');
+                         if (value >= 8) td.classList.add('text-red-600');
+                         else if (value >= 5) td.classList.add('text-yellow-600');
+                     }
+                     if (conf.key === 'remainingDays' && item.isExpired) {
+                         td.classList.add('text-red-600', 'font-bold');
+                     } else if (conf.key === 'remainingDays' && item.isExpirySoon) {
+                          td.classList.add('text-yellow-600');
+                      }
+                      if (conf.key === 'stagnantDays' && item.isStagnant) {
+                          td.classList.add('text-blue-600');
+                      }
+                      if (conf.key === 'stagnantDays' && item.isUnused) {
+                          td.classList.add('text-gray-500');
+                      }
+
+
+                    tr.appendChild(td);
+                });
+                reportTableBody.appendChild(tr);
+            });
+        }
+
+        // --- イベントハンドラ ---
+
+        // データ読み込み＆分析実行ボタン
+        function handleProcessData() {
+            messageArea.textContent = ''; // メッセージクリア
+            const tsvData = inventoryDataEl.value;
+            if (!tsvData) {
+                messageArea.textContent = '在庫データを入力してください。';
+                messageArea.className = 'mt-4 text-center text-red-600 font-medium';
+                return;
+            }
+
+            try {
+                const parsed = parseTSV(tsvData);
+                headers = parsed.headers;
+                rawData = parsed.data;
+
+                // 必須列チェック
+                const missingCols = validateHeaders(headers);
+                if (missingCols.length > 0) {
+                    messageArea.textContent = `エラー: 必須列が見つかりません (${missingCols.join(', ')})`;
+                     messageArea.className = 'mt-4 text-center text-red-600 font-medium';
+                    return;
+                }
+
+                // 設定を読み込み
+                updateSettings(); // 最新の設定を反映させておく
+
+                // データ処理実行
+                processedData = processInventoryData(rawData, headers);
+
+                 // フィルタオプション更新
+                 updateInventoryFilterOptions();
+
+                // UI更新
+                updateDashboardKPIs(processedData);
+                updateDashboardWatchlists(processedData);
+                renderInventoryTableHeader(); // ヘッダー生成
+                updateInventoryList(); // 在庫一覧更新 (フィルタ/ソート/ページネーション含む)
+                updateAnalysisReport(); // 分析レポート更新
+
+                // セクション表示
+                dashboardSection.classList.remove('hidden');
+                inventoryListSection.classList.remove('hidden');
+                analysisReportSection.classList.remove('hidden');
+                printButtonContainer.classList.remove('hidden');
+                recalculateButton.disabled = false; // 再計算ボタン有効化
+
+                messageArea.textContent = `データ ${rawData.length} 件を読み込み、${processedData.length} 件を分析しました。`;
+                messageArea.className = 'mt-4 text-center text-green-600 font-medium';
+
+
+            } catch (error) {
+                console.error("Error processing data:", error);
+                messageArea.textContent = `エラーが発生しました: ${error.message}`;
+                messageArea.className = 'mt-4 text-center text-red-600 font-medium';
+                 // エラー発生時は分析結果セクションを隠すなど
+                dashboardSection.classList.add('hidden');
+                inventoryListSection.classList.add('hidden');
+                analysisReportSection.classList.add('hidden');
+                printButtonContainer.classList.add('hidden');
+                recalculateButton.disabled = true;
+            }
+        }
+
+        // 再計算ボタン
+        function handleRecalculate() {
+             if (rawData.length === 0) {
+                 messageArea.textContent = '先にデータを読み込んでください。';
+                 messageArea.className = 'mt-4 text-center text-red-600 font-medium';
+                 return;
+             }
+             messageArea.textContent = ''; // メッセージクリア
+             try {
+                 // 設定を読み込み
+                 updateSettings();
+
+                 // データ再処理実行
+                 processedData = processInventoryData(rawData, headers); // rawDataは保持されている前提
+
+                 // フィルタオプション更新
+                 updateInventoryFilterOptions();
+
+                 // UI更新
+                 updateDashboardKPIs(processedData);
+                 updateDashboardWatchlists(processedData);
+                 // renderInventoryTableHeader(); // ヘッダーは変わらないはずなので不要かも
+                 updateInventoryList();
+                 updateAnalysisReport();
+
+                 messageArea.textContent = '再計算が完了しました。';
+                 messageArea.className = 'mt-4 text-center text-green-600 font-medium';
+                 recalculateButton.disabled = true; // 再計算後は一旦無効化
+
+             } catch (error) {
+                 console.error("Error recalculating data:", error);
+                 messageArea.textContent = `再計算中にエラーが発生しました: ${error.message}`;
+                 messageArea.className = 'mt-4 text-center text-red-600 font-medium';
+             }
+        }
+
+
+        // 在庫一覧: フィルタ・検索変更
+        function handleInventoryFilterChange() {
+            inventorySearchTerm = searchInventoryEl.value;
+            inventoryFilterCategory = filterCategoryEl.value;
+            inventoryFilterRisk = filterRiskEl.value;
+            inventoryCurrentPage = 1; // フィルタ変更時は1ページ目に戻る
+            updateInventoryList();
+        }
+
+        // 在庫一覧: 表示件数変更
+        function handleInventoryPageSizeChange() {
+            inventoryPageSize = inventoryPageSizeEl.value;
+            inventoryCurrentPage = 1; // 表示件数変更時は1ページ目に戻る
+            updateInventoryList();
+        }
+
+        // 在庫一覧: ソート実行
+        function handleInventorySort(columnKey) {
+            if (inventorySortColumn === columnKey) {
+                // 同じ列をクリックしたら昇順/降順を切り替え
+                inventorySortDirection = inventorySortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 新しい列をクリックしたら昇順でソート
+                inventorySortColumn = columnKey;
+                inventorySortDirection = 'asc';
+            }
+             renderInventoryTableHeader(); // ソートアイコン更新のためにヘッダー再描画
+            updateInventoryList();
+        }
+
+
+        // 分析レポート: タブ切り替え
+        function handleReportTabChange(event) {
+            reportTabs.forEach(tab => tab.classList.remove('active-tab', 'border-blue-500', 'text-blue-600'));
+            reportTabs.forEach(tab => tab.classList.add('border-transparent', 'text-gray-500')); // Reset style
+
+            const selectedTab = event.target;
+            selectedTab.classList.add('active-tab', 'border-blue-500', 'text-blue-600');
+            selectedTab.classList.remove('border-transparent', 'text-gray-500');
+
+            reportCurrentTab = selectedTab.dataset.tab;
+            updateAnalysisReport();
+        }
+
+        // 分析レポート: 表示オプション変更
+        function handleReportOptionsChange() {
+            reportCount = reportCountEl.value;
+            reportExcludeTop3 = excludeTop3El.checked;
+            updateAnalysisReport();
+        }
+
+        // レポート印刷ボタン
+        function handlePrintReport() {
+            // 印刷用セクションに必要なデータを設定
+            document.getElementById('print-analysis-date').textContent = analysisDate.toLocaleDateString('ja-JP');
+            document.getElementById('print-stagnant-days').textContent = stagnantThreshold;
+
+            // KPI
+            const printKpiArea = document.getElementById('print-kpi');
+            printKpiArea.innerHTML = kpiArea.innerHTML; // ダッシュボードのKPIをコピー (簡易的)
+            // 必要なら印刷用に整形し直す
+
+            // 各リストの生成 (要件に合わせて上位N件などを取得)
+            const printLimit = 50; // 印刷する最大件数 (例)
+             const printHeaders = [ // 印刷する列
+                { key: '薬品コード', label: 'コード' },
+                { key: '薬品名称', label: '薬品名称' },
+                { key: 'メーカー', label: 'メーカー' },
+                { key: '在庫数量', label: '数量', format: 'number', align: 'right' },
+                { key: '在庫金額(税別)', label: '金額(税別)', format: 'currency', align: 'right' },
+            ];
+
+            const generatePrintTable = (data, headerElId, bodyElId, specificHeaders = []) => {
+                 const headerEl = document.getElementById(headerElId);
+                 const bodyEl = document.getElementById(bodyElId);
+                 headerEl.innerHTML = '';
+                 bodyEl.innerHTML = '';
+
+                 const headersToPrint = [...printHeaders, ...specificHeaders];
+
+                 // ヘッダー行
+                 const hr = headerEl.insertRow();
+                 headersToPrint.forEach(conf => {
+                     const th = document.createElement('th');
+                     th.textContent = conf.label;
+                     th.className = `px-2 py-1 border border-gray-300 text-xs ${conf.align === 'right' ? 'text-right' : ''}`;
+                     hr.appendChild(th);
+                 });
+
+                 // データ行
+                 data.slice(0, printLimit).forEach(item => {
+                     const tr = bodyEl.insertRow();
+                     headersToPrint.forEach(conf => {
+                         const td = document.createElement('td');
+                         let value = item[conf.key];
+                         // フォーマット適用
+                         if (conf.format === 'currency') value = `¥${Math.round(value || 0).toLocaleString()}`;
+                         else if (conf.format === 'number') value = (value || 0).toLocaleString();
+                         else if (conf.format === 'days') value = value !== null ? `${value}日` : '-';
+                         else if (conf.format === 'daysOr9999') value = value === 9999 ? '未使用' : (value !== null ? `${value}日` : '-');
+
+                         td.textContent = value !== undefined && value !== null ? value : '-';
+                         td.className = `px-2 py-1 border border-gray-300 text-xs ${conf.align === 'right' ? 'text-right' : ''}`;
+
+                         // 条件に応じたスタイル（印刷では背景色よりボーダーなどが有効）
+                         if (conf.key === 'riskRank' && item.riskRank >= 8) tr.classList.add('row-danger-high');
+                         else if (conf.key === 'remainingDays' && item.isExpirySoon) tr.classList.add('row-warning-expiry');
+                         else if (conf.key === 'stagnantDays' && item.isStagnant) tr.classList.add('row-warning-stagnant');
+                         else if (conf.key === 'stagnantDays' && item.isUnused) tr.classList.add('row-unused');
+
+                         tr.appendChild(td);
+                     });
+                 });
+                 if (data.length === 0) {
+                      const tr = bodyEl.insertRow();
+                      const td = tr.insertCell();
+                      td.colSpan = headersToPrint.length;
+                      td.textContent = '該当なし';
+                      td.className = 'px-2 py-1 border border-gray-300 text-xs text-center text-gray-500';
+                 }
+            };
+
+            // 危険度高リスト (ランク8以上)
+            const highRiskData = processedData.filter(item => item.riskRank >= 8).sort((a,b) => b.riskRank - a.riskRank);
+            generatePrintTable(highRiskData, 'print-risk-header', 'print-risk-body', [
+                { key: 'riskRank', label: '危険度', align: 'center' }
+            ]);
+
+            // 滞留在庫リスト
+            const stagnantData = processedData.filter(item => item.isStagnant).sort((a,b) => b.stagnantDays - a.stagnantDays);
+             generatePrintTable(stagnantData, 'print-stagnant-header', 'print-stagnant-body', [
+                { key: 'stagnantDays', label: '滞留日数', format: 'days', align: 'right' },
+                { key: 'formattedLastOutDate', label: '最終出庫'}
+            ]);
+
+            // 未使用在庫リスト
+            const unusedData = processedData.filter(item => item.isUnused).sort((a, b) => (a.lastInDate || 0) - (b.lastInDate || 0)); // 最終入庫古い順
+            generatePrintTable(unusedData, 'print-unused-header', 'print-unused-body', [
+                 { key: 'formattedLastInDate', label: '最終入庫'}
+            ]);
+
+            // 期限切迫リスト
+            const expirySoonData = processedData.filter(item => item.isExpirySoon).sort((a,b) => (a.remainingDays || Infinity) - (b.remainingDays || Infinity));
+             generatePrintTable(expirySoonData, 'print-expiry-header', 'print-expiry-body', [
+                { key: 'remainingDays', label: '残り日数', format: 'days', align: 'right' },
+                { key: 'formattedExpiryDate', label: '有効期限'}
+            ]);
+
+
+            // 印刷ダイアログ表示
+             printSection.classList.remove('hidden'); // 印刷セクションを表示
+             window.print(); // ブラウザの印刷機能を呼び出す
+             printSection.classList.add('hidden'); // 印刷後は非表示に戻す
+        }
+
+
+        // --- 初期化実行 ---
+        initialize();
+
+    </script>
+</body>
+</html>
